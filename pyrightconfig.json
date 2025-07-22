@@ -1,0 +1,14 @@
+{
+    "include": ["src", "run_slate_gallery.py"],
+    "exclude": [
+        "venv",
+        "archive",
+        "__pycache__",
+        "*.pyc"
+    ],
+    "extraPaths": ["src"],
+    "reportMissingImports": true,
+    "reportMissingTypeStubs": false,
+    "pythonVersion": "3.12",
+    "typeCheckingMode": "standard"
+}
