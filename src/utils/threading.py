@@ -74,7 +74,7 @@ class GenerateGalleryThread(QtCore.QThread):
 
         # Lock for thread-safe operations
         self.focal_length_lock = threading.Lock()
-        self.all_focal_lengths = set()
+        self.focal_length_counts = {}
 
     def run(self):
         try:
@@ -112,7 +112,14 @@ class GenerateGalleryThread(QtCore.QThread):
             self.progress.emit(80)
             # Import here to avoid circular imports
             from core.gallery_generator import generate_html_gallery
-            success = generate_html_gallery(gallery_slates, sorted(self.all_focal_lengths), self.template_path,
+
+            # Convert focal length counts to structured data sorted by focal length value
+            focal_length_data = [
+                {'value': focal_length, 'count': count}
+                for focal_length, count in sorted(self.focal_length_counts.items())
+            ]
+
+            success = generate_html_gallery(gallery_slates, focal_length_data, self.template_path,
                                             self.output_dir, self.root_dir, self.emit_status)
             if success:
                 message = "Gallery generated."
@@ -155,7 +162,7 @@ class GenerateGalleryThread(QtCore.QThread):
 
             if focal_length_value:
                 with self.focal_length_lock:
-                    self.all_focal_lengths.add(focal_length_value)
+                    self.focal_length_counts[focal_length_value] = self.focal_length_counts.get(focal_length_value, 0) + 1
 
             return {
                 'original_path': image_path,

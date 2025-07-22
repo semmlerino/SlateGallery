@@ -473,7 +473,7 @@
             <label>Focal Length:</label>
             <div class="focal-length-options">  
                 {% for focal in focal_lengths %}
-                    <label><input type="checkbox" class="focal-length-filter" value="{{ focal }}" aria-label="{{ focal }}mm"> {{ focal }}mm</label>
+                    <label><input type="checkbox" class="focal-length-filter" value="{{ focal.value }}" aria-label="{{ focal.value }}mm"> {{ focal.value }}mm ({{ focal.count }} photos)</label>
                 {% endfor %}
             </div>
             <div class="button-group">
