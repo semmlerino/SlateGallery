@@ -497,7 +497,7 @@
             <label>Date Taken:</label>
             <div class="date-options">  
                 {% for date in dates %}
-                    <label><input type="checkbox" class="date-filter" value="{{ date.value }}" aria-label="{{ date.value }}"> {{ date.value }} ({{ date.count }} photos)</label>
+                    <label><input type="checkbox" class="date-filter" value="{{ date.value }}" aria-label="{{ date.display_date }}"> {{ date.display_date }} ({{ date.count }} photos)</label>
                 {% endfor %}
             </div>
             <div class="button-group">
@@ -600,7 +600,7 @@
                     var orientationMatch = selectedOrientations.length === 0 || selectedOrientations.includes(imgOrientation);
                     var focalMatch = selectedFocalLengths.length === 0 || selectedFocalLengths.includes(imgFocalLength.toString());
                     
-                    // Date matching: extract YYYY-MM from ISO date string and check if it matches any selected month
+                    // Date matching: extract YYYY-MM-DD from ISO date string and check if it matches any selected day
                     var dateMatch = selectedDates.length === 0 || (imgDate && selectedDates.some(date => imgDate.startsWith(date)));
 
                     img.style.display = (orientationMatch && focalMatch && dateMatch) ? 'flex' : 'none';

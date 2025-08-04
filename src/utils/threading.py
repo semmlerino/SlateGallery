@@ -2,6 +2,7 @@
 
 import os
 import threading
+from datetime import datetime
 
 from PySide6 import QtCore
 from PySide6.QtCore import Signal
@@ -78,7 +79,7 @@ class GenerateGalleryThread(QtCore.QThread):
 
         # Date-related data structures
         self.date_lock = threading.Lock()
-        self.date_counts = {}  # Format: "YYYY-MM": count
+        self.date_counts = {}  # Format: "YYYY-MM-DD": count
 
     def run(self):
         try:
@@ -125,7 +126,11 @@ class GenerateGalleryThread(QtCore.QThread):
 
             # Convert date counts to structured data sorted by date
             date_data = [
-                {'value': date_key, 'count': count}
+                {
+                    'value': date_key, 
+                    'count': count,
+                    'display_date': self._format_date_for_display(date_key)
+                }
                 for date_key, count in sorted(self.date_counts.items())
             ]
 
@@ -177,9 +182,9 @@ class GenerateGalleryThread(QtCore.QThread):
 
             if image_date:
                 date_taken = image_date.isoformat()  # ISO format for HTML data attribute
-                date_key = image_date.strftime('%Y-%m')  # YYYY-MM format for grouping
+                date_key = image_date.strftime('%Y-%m-%d')  # YYYY-MM-DD format for grouping
 
-                # Count photos by month
+                # Count photos by day
                 with self.date_lock:
                     self.date_counts[date_key] = self.date_counts.get(date_key, 0) + 1
 
@@ -197,6 +202,15 @@ class GenerateGalleryThread(QtCore.QThread):
         except Exception as e:
             logger.error(f"Error processing image {image_path}: {e}", exc_info=True)
             return None
+
+    def _format_date_for_display(self, date_key):
+        """Convert YYYY-MM-DD date key to DD/MM/YY display format."""
+        try:
+            date_obj = datetime.strptime(date_key, '%Y-%m-%d')
+            return date_obj.strftime('%d/%m/%y')
+        except ValueError as e:
+            logger.warning(f"Failed to format date key '{date_key}': {e}")
+            return date_key
 
     def emit_status(self, message):
         self.gallery_complete.emit(True, message)
