@@ -9,12 +9,13 @@ from utils.logging_config import log_function, logger
 
 # ----------------------------- ImprovedCacheManager Class -----------------------------
 
+
 class ImprovedCacheManager:
-    def __init__(self, base_dir='.', max_workers=4, batch_size=100):
+    def __init__(self, base_dir=".", max_workers=4, batch_size=100):
         self.base_dir = base_dir
-        self.cache_dir = os.path.join(base_dir, 'cache')
-        self.thumb_dir = os.path.join(base_dir, 'thumbnails')
-        self.metadata_file = os.path.join(self.cache_dir, 'metadata.json')
+        self.cache_dir = os.path.join(base_dir, "cache")
+        self.thumb_dir = os.path.join(base_dir, "thumbnails")
+        self.metadata_file = os.path.join(self.cache_dir, "metadata.json")
 
         self.max_workers = max_workers
         self.batch_size = batch_size
@@ -38,8 +39,8 @@ class ImprovedCacheManager:
     @log_function
     def get_cache_file(self, root_dir):
         # Create a unique name for the root_dir, e.g., hash
-        dir_hash = hashlib.md5(root_dir.encode('utf-8')).hexdigest()
-        return os.path.join(self.cache_dir, f'{dir_hash}.json')
+        dir_hash = hashlib.md5(root_dir.encode("utf-8")).hexdigest()
+        return os.path.join(self.cache_dir, f"{dir_hash}.json")
 
     @log_function
     def load_cache(self, root_dir):
@@ -61,7 +62,7 @@ class ImprovedCacheManager:
     def save_cache(self, root_dir, slates):
         cache_file = self.get_cache_file(root_dir)
         try:
-            with open(cache_file, 'w') as f:
+            with open(cache_file, "w") as f:
                 json.dump(slates, f)
             logger.info(f"Saved cache for directory: {root_dir}")
         except Exception as e:
@@ -71,7 +72,7 @@ class ImprovedCacheManager:
     def process_images_batch(self, image_paths, callback=None):
         logger.info(f"Processing batch of {len(image_paths)} images for scanning.")
 
-        return [{'path': path} for path in image_paths]
+        return [{"path": path} for path in image_paths]
 
     @log_function
     def shutdown(self):

@@ -6,11 +6,11 @@ from .gallery_generator import generate_html_gallery
 from .image_processor import get_exif_data, get_orientation, scan_directories
 
 __all__ = [
-    'get_exif_data',
-    'get_orientation',
-    'scan_directories',
-    'load_config',
-    'save_config',
-    'ImprovedCacheManager',
-    'generate_html_gallery'
+    "get_exif_data",
+    "get_orientation",
+    "scan_directories",
+    "load_config",
+    "save_config",
+    "ImprovedCacheManager",
+    "generate_html_gallery",
 ]

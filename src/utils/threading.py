@@ -11,6 +11,7 @@ from .logging_config import log_function, logger
 
 # ----------------------------- Worker Threads -----------------------------
 
+
 class ScanThread(QtCore.QThread):
     scan_complete = Signal(dict, str)
     progress = Signal(int)
@@ -34,12 +35,11 @@ class ScanThread(QtCore.QThread):
             logger.debug(f"Total slates to process: {total_slates}")
 
             for _slate, data in slates.items():
-                image_paths = data['images']
+                image_paths = data["images"]
                 processed_images = self.cache_manager.process_images_batch(
-                    image_paths,
-                    callback=lambda p: self.progress.emit(int(p))
+                    image_paths, callback=lambda p: self.progress.emit(int(p))
                 )
-                data['images'] = processed_images
+                data["images"] = processed_images
 
                 processed_slates += 1
                 if total_slates > 0:
@@ -59,11 +59,14 @@ class ScanThread(QtCore.QThread):
             logger.error(error_message, exc_info=True)
             self.scan_complete.emit({}, error_message)
 
+
 class GenerateGalleryThread(QtCore.QThread):
     gallery_complete = Signal(bool, str)
     progress = Signal(int)
 
-    def __init__(self, selected_slates, slates_dict, cache_manager, output_dir, root_dir, template_path, generate_thumbnails):
+    def __init__(
+        self, selected_slates, slates_dict, cache_manager, output_dir, root_dir, template_path, generate_thumbnails
+    ):
         super().__init__()
         self.selected_slates = selected_slates
         self.slates_dict = slates_dict
@@ -92,19 +95,16 @@ class GenerateGalleryThread(QtCore.QThread):
             logger.info(f"Total slates selected: {total_slates}")
 
             for slate in self.selected_slates:
-                images = self.slates_dict.get(slate, {}).get('images', [])
+                images = self.slates_dict.get(slate, {}).get("images", [])
                 slate_images = []
 
                 for image in images:
-                    image_data = self.process_image(image['path'])
+                    image_data = self.process_image(image["path"])
                     if image_data is not None:
                         slate_images.append(image_data)
 
                 if slate_images:
-                    gallery_slates.append({
-                        'slate': slate,
-                        'images': slate_images
-                    })
+                    gallery_slates.append({"slate": slate, "images": slate_images})
 
                 processed_slates += 1
                 if total_slates > 0:
@@ -120,22 +120,25 @@ class GenerateGalleryThread(QtCore.QThread):
 
             # Convert focal length counts to structured data sorted by focal length value
             focal_length_data = [
-                {'value': focal_length, 'count': count}
+                {"value": focal_length, "count": count}
                 for focal_length, count in sorted(self.focal_length_counts.items())
             ]
 
             # Convert date counts to structured data sorted by date
             date_data = [
-                {
-                    'value': date_key, 
-                    'count': count,
-                    'display_date': self._format_date_for_display(date_key)
-                }
+                {"value": date_key, "count": count, "display_date": self._format_date_for_display(date_key)}
                 for date_key, count in sorted(self.date_counts.items())
             ]
 
-            success = generate_html_gallery(gallery_slates, focal_length_data, date_data, self.template_path,
-                                            self.output_dir, self.root_dir, self.emit_status)
+            success = generate_html_gallery(
+                gallery_slates,
+                focal_length_data,
+                date_data,
+                self.template_path,
+                self.output_dir,
+                self.root_dir,
+                self.emit_status,
+            )
             if success:
                 message = "Gallery generated."
                 self.progress.emit(100)
@@ -157,7 +160,7 @@ class GenerateGalleryThread(QtCore.QThread):
             from core.image_processor import get_exif_data, get_image_date, get_orientation
 
             exif = get_exif_data(image_path)
-            focal_length = exif.get('FocalLength', None)
+            focal_length = exif.get("FocalLength", None)
             focal_length_value = None
 
             if focal_length:
@@ -182,7 +185,7 @@ class GenerateGalleryThread(QtCore.QThread):
 
             if image_date:
                 date_taken = image_date.isoformat()  # ISO format for HTML data attribute
-                date_key = image_date.strftime('%Y-%m-%d')  # YYYY-MM-DD format for grouping
+                date_key = image_date.strftime("%Y-%m-%d")  # YYYY-MM-DD format for grouping
 
                 # Count photos by day
                 with self.date_lock:
@@ -190,14 +193,16 @@ class GenerateGalleryThread(QtCore.QThread):
 
             if focal_length_value:
                 with self.focal_length_lock:
-                    self.focal_length_counts[focal_length_value] = self.focal_length_counts.get(focal_length_value, 0) + 1
+                    self.focal_length_counts[focal_length_value] = (
+                        self.focal_length_counts.get(focal_length_value, 0) + 1
+                    )
 
             return {
-                'original_path': image_path,
-                'focal_length': focal_length_value,
-                'orientation': orientation,
-                'filename': filename,
-                'date_taken': date_taken
+                "original_path": image_path,
+                "focal_length": focal_length_value,
+                "orientation": orientation,
+                "filename": filename,
+                "date_taken": date_taken,
             }
         except Exception as e:
             logger.error(f"Error processing image {image_path}: {e}", exc_info=True)
@@ -206,8 +211,8 @@ class GenerateGalleryThread(QtCore.QThread):
     def _format_date_for_display(self, date_key):
         """Convert YYYY-MM-DD date key to DD/MM/YY display format."""
         try:
-            date_obj = datetime.strptime(date_key, '%Y-%m-%d')
-            return date_obj.strftime('%d/%m/%y')
+            date_obj = datetime.strptime(date_key, "%Y-%m-%d")
+            return date_obj.strftime("%d/%m/%y")
         except ValueError as e:
             logger.warning(f"Failed to format date key '{date_key}': {e}")
             return date_key

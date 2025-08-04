@@ -9,6 +9,7 @@ from utils.logging_config import log_function, logger
 
 # ----------------------------- Helper Functions -----------------------------
 
+
 @log_function
 def get_exif_data(image_path):
     try:
@@ -16,13 +17,19 @@ def get_exif_data(image_path):
             exif_data = {}
 
             # Modern approach: getexif() + get_ifd() for EXIF subdirectories
-            if hasattr(image, 'getexif'):
+            if hasattr(image, "getexif"):
                 exif = image.getexif()
                 if exif:
                     # Base EXIF tags
                     for tag, value in exif.items():
                         decoded = TAGS.get(tag, tag)
-                        if decoded in ('FocalLength', 'Orientation', 'DateTime', 'DateTimeOriginal', 'DateTimeDigitized'):
+                        if decoded in (
+                            "FocalLength",
+                            "Orientation",
+                            "DateTime",
+                            "DateTimeOriginal",
+                            "DateTimeDigitized",
+                        ):
                             exif_data[decoded] = value
 
                     # EXIF IFD (where FocalLength usually resides)
@@ -30,7 +37,11 @@ def get_exif_data(image_path):
                         exif_ifd = exif.get_ifd(IFD.Exif)
                         for tag, value in exif_ifd.items():
                             decoded = TAGS.get(tag, tag)
-                            if decoded in ('FocalLength', 'Orientation', 'DateTime', 'DateTimeOriginal', 'DateTimeDigitized') and decoded not in exif_data:
+                            if (
+                                decoded
+                                in ("FocalLength", "Orientation", "DateTime", "DateTimeOriginal", "DateTimeDigitized")
+                                and decoded not in exif_data
+                            ):
                                 exif_data[decoded] = value
                     except (KeyError, AttributeError):
                         pass
@@ -39,18 +50,25 @@ def get_exif_data(image_path):
                         return exif_data
 
             # Fallback to deprecated _getexif() for compatibility
-            if hasattr(image, '_getexif'):
+            if hasattr(image, "_getexif"):
                 exifinfo = image._getexif()  # type: ignore[attr-defined]
                 if exifinfo:
                     for tag, value in exifinfo.items():
                         decoded = TAGS.get(tag, tag)
-                        if decoded in ('FocalLength', 'Orientation', 'DateTime', 'DateTimeOriginal', 'DateTimeDigitized'):
+                        if decoded in (
+                            "FocalLength",
+                            "Orientation",
+                            "DateTime",
+                            "DateTimeOriginal",
+                            "DateTimeDigitized",
+                        ):
                             exif_data[decoded] = value
 
             return exif_data
     except Exception as e:
         logger.error(f"Error extracting EXIF data for {image_path}: {e}", exc_info=True)
         return {}
+
 
 @log_function
 def get_image_date(exif_data):
@@ -59,50 +77,52 @@ def get_image_date(exif_data):
     Prioritizes DateTimeOriginal, then DateTimeDigitized, then DateTime.
     Returns datetime object or None if no valid date found.
     """
-    date_tags = ['DateTimeOriginal', 'DateTimeDigitized', 'DateTime']
+    date_tags = ["DateTimeOriginal", "DateTimeDigitized", "DateTime"]
 
     for tag in date_tags:
         date_str = exif_data.get(tag)
         if date_str:
             try:
                 # EXIF date format is 'YYYY:MM:DD HH:MM:SS'
-                return datetime.strptime(date_str, '%Y:%m:%d %H:%M:%S')
+                return datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
             except ValueError as e:
                 logger.warning(f"Invalid date format for {tag}: {date_str}, error: {e}")
                 continue
 
     return None
 
+
 @log_function
 def get_orientation(image_path, exif_data):
-    if 'Orientation' in exif_data:
-        orientation = exif_data['Orientation']
+    if "Orientation" in exif_data:
+        orientation = exif_data["Orientation"]
         if orientation in [6, 8]:
-            return 'portrait'
+            return "portrait"
         else:
-            return 'landscape'
+            return "landscape"
     else:
         image = None
         try:
             image = Image.open(image_path)
             width, height = image.size
-            return 'portrait' if height > width else 'landscape'
+            return "portrait" if height > width else "landscape"
         except Exception as e:
             logger.error(f"Error determining orientation for {image_path}: {e}", exc_info=True)
-            return 'unknown'
+            return "unknown"
         finally:
-            if image and hasattr(image, 'fp') and image.fp and hasattr(image.fp, 'close'):
+            if image and hasattr(image, "fp") and image.fp and hasattr(image.fp, "close"):
                 try:
                     image.fp.close()
                 except Exception:
                     pass
+
 
 @log_function
 def scan_directories(root_dir):
     # QString is no longer needed in PySide6, using native Python strings
     root_dir = str(root_dir)
 
-    image_extensions = ['.jpg', '.jpeg', '.png', '.tiff', '.bmp', '.gif']
+    image_extensions = [".jpg", ".jpeg", ".png", ".tiff", ".bmp", ".gif"]
     slates = {}
 
     if not os.path.exists(root_dir):
@@ -118,11 +138,9 @@ def scan_directories(root_dir):
 
         if images_in_dir:
             relative_dir = os.path.relpath(dirpath, root_dir)
-            if relative_dir == '.':
-                relative_dir = '/'
-            slates[relative_dir] = {
-                'images': [os.path.join(dirpath, f) for f in images_in_dir]
-            }
+            if relative_dir == ".":
+                relative_dir = "/"
+            slates[relative_dir] = {"images": [os.path.join(dirpath, f) for f in images_in_dir]}
             logger.info(f"Found {len(images_in_dir)} images in slate: {relative_dir}")
 
     return slates

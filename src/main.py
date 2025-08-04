@@ -45,6 +45,7 @@ from utils.threading import GenerateGalleryThread, ScanThread
 
 # ----------------------------- Custom File Dialog -----------------------------
 
+
 class CustomFileDialog(QFileDialog):
     def __init__(self, *args):
         QFileDialog.__init__(self, *args)
@@ -74,7 +75,9 @@ class CustomFileDialog(QFileDialog):
         self.path_input.setText(path)
         logger.debug(f"Directory changed to: {path}")
 
+
 # ----------------------------- Main Application -----------------------------
+
 
 class GalleryGeneratorApp(QMainWindow):
     def __init__(self, parent=None):
@@ -84,12 +87,10 @@ class GalleryGeneratorApp(QMainWindow):
 
         # Load configuration with multiple directories
         self.current_root_dir, self.cached_root_dirs = load_config()
-        self.output_dir = os.path.expanduser('~')
+        self.output_dir = os.path.expanduser("~")
 
         self.cache_manager = ImprovedCacheManager(
-            base_dir=os.path.expanduser("~/.slate_gallery"),
-            max_workers=4,
-            batch_size=100
+            base_dir=os.path.expanduser("~/.slate_gallery"), max_workers=4, batch_size=100
         )
 
         if not self.current_root_dir:
@@ -404,7 +405,7 @@ class GalleryGeneratorApp(QMainWindow):
                 "Delete Cached Directory",
                 f"Are you sure you want to delete the cached directory:\\n\\n{current_dir}?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No
+                QMessageBox.StandardButton.No,
             )
             if reply == QMessageBox.StandardButton.Yes:
                 self.cached_root_dirs.remove(current_dir)
@@ -430,13 +431,13 @@ class GalleryGeneratorApp(QMainWindow):
                     self.on_scan()
                     logger.info(f"Switched to new current directory: {new_dir}")
                 else:
-                    self.current_root_dir = ''
+                    self.current_root_dir = ""
                     self.update_status("No cached directories available. Please add a new slate directory.")
                     QMessageBox.information(
                         self,
                         "No Directories",
                         "All cached directories have been deleted. Please add a new slate directory.",
-                        QMessageBox.StandardButton.Ok
+                        QMessageBox.StandardButton.Ok,
                     )
                     logger.info("All cached directories deleted. Awaiting new directory selection.")
         else:
@@ -541,6 +542,7 @@ class GalleryGeneratorApp(QMainWindow):
     def apply_filters_debounced(self):
         """Apply filters with performance monitoring and enhanced error handling."""
         import time
+
         start_time = time.perf_counter()
 
         try:
@@ -661,7 +663,7 @@ class GalleryGeneratorApp(QMainWindow):
             output = self.output_dir
 
             if not output:
-                output = os.path.expanduser('~')
+                output = os.path.expanduser("~")
                 self.output_dir = output
                 self.update_status("Output directory set to home directory.")
                 logger.info(f"Output directory set to home directory: {self.output_dir}")
@@ -682,8 +684,10 @@ class GalleryGeneratorApp(QMainWindow):
             self.progress_bar.setValue(0)
 
             # Path to the HTML template
-            template_file = 'gallery_template.html'
-            template_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'templates', template_file)
+            template_file = "gallery_template.html"
+            template_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", template_file
+            )
             if not os.path.exists(template_path):
                 self.update_status(f"HTML template not found: {template_path}")
                 logger.error(f"HTML template not found: {template_path}")
@@ -698,7 +702,7 @@ class GalleryGeneratorApp(QMainWindow):
                 output_dir=output,
                 root_dir=self.current_root_dir,
                 template_path=template_path,
-                generate_thumbnails=False
+                generate_thumbnails=False,
             )
             self.gallery_thread.gallery_complete.connect(self.on_gallery_complete)
             self.gallery_thread.progress.connect(self.on_gallery_progress)
@@ -725,10 +729,10 @@ class GalleryGeneratorApp(QMainWindow):
 
     def on_open_gallery(self):
         try:
-            html_file_path = os.path.join(self.output_dir, 'index.html')
+            html_file_path = os.path.join(self.output_dir, "index.html")
             if os.path.exists(html_file_path):
                 # Use webbrowser module to open the file in the default browser
-                url = 'file://' + os.path.abspath(html_file_path)
+                url = "file://" + os.path.abspath(html_file_path)
                 webbrowser.open(url, new=2)  # new=2 opens in a new window if possible
                 logger.info(f"Opened gallery at: {html_file_path}")
                 self.update_status("Opening gallery in new browser window...")
@@ -759,7 +763,9 @@ class GalleryGeneratorApp(QMainWindow):
             logger.error(f"Error during application shutdown: {e}", exc_info=True)
             event.accept()
 
+
 # ----------------------------- Main Execution -----------------------------
+
 
 def main():
     try:
@@ -808,6 +814,7 @@ def main():
     except Exception as e:
         logger.critical(f"Critical error in main execution: {e}", exc_info=True)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

@@ -7,13 +7,16 @@ from utils.logging_config import log_function, logger
 
 # ----------------------------- HTML Gallery Generation -----------------------------
 
+
 @log_function
-def generate_html_gallery(gallery_data, focal_length_data, date_data, template_path, output_dir, root_dir, status_callback):
+def generate_html_gallery(
+    gallery_data, focal_length_data, date_data, template_path, output_dir, root_dir, status_callback
+):
     try:
         # Process image paths
         for slate in gallery_data:
-            for image in slate['images']:
-                original_path = image['original_path']
+            for image in slate["images"]:
+                original_path = image["original_path"]
                 try:
                     # Verify path is within root directory
                     real_original_path = os.path.realpath(original_path)
@@ -25,8 +28,8 @@ def generate_html_gallery(gallery_data, focal_length_data, date_data, template_p
 
                     # Use absolute path with forward slashes for web
                     absolute_path = os.path.abspath(original_path)
-                    web_path = 'file://' + absolute_path.replace('\\', '/')
-                    image['web_path'] = web_path
+                    web_path = "file://" + absolute_path.replace("\\", "/")
+                    image["web_path"] = web_path
 
                 except Exception as e:
                     logger.error(f"Error processing image {original_path}: {e}", exc_info=True)
@@ -34,10 +37,7 @@ def generate_html_gallery(gallery_data, focal_length_data, date_data, template_p
                     continue
 
         # Load and render template
-        env = Environment(
-            loader=FileSystemLoader(os.path.dirname(template_path)),
-            autoescape=True
-        )
+        env = Environment(loader=FileSystemLoader(os.path.dirname(template_path)), autoescape=True)
         template = env.get_template(os.path.basename(template_path))
 
         try:
@@ -59,9 +59,9 @@ def generate_html_gallery(gallery_data, focal_length_data, date_data, template_p
 
         # Write the HTML file
         try:
-            html_file_path = os.path.join(output_dir, 'index.html')
-            with open(html_file_path, 'wb') as f:
-                f.write(output_html.encode('utf-8'))
+            html_file_path = os.path.join(output_dir, "index.html")
+            with open(html_file_path, "wb") as f:
+                f.write(output_html.encode("utf-8"))
             status_callback(f"Gallery generated at {os.path.abspath(html_file_path)}")
             logger.info(f"Gallery generated at {os.path.abspath(html_file_path)}")
             return True
