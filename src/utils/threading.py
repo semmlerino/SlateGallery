@@ -76,6 +76,10 @@ class GenerateGalleryThread(QtCore.QThread):
         self.focal_length_lock = threading.Lock()
         self.focal_length_counts = {}
 
+        # Date-related data structures
+        self.date_lock = threading.Lock()
+        self.date_counts = {}  # Format: "YYYY-MM": count
+
     def run(self):
         try:
             logger.info("Generating Gallery...")
@@ -119,7 +123,13 @@ class GenerateGalleryThread(QtCore.QThread):
                 for focal_length, count in sorted(self.focal_length_counts.items())
             ]
 
-            success = generate_html_gallery(gallery_slates, focal_length_data, self.template_path,
+            # Convert date counts to structured data sorted by date
+            date_data = [
+                {'value': date_key, 'count': count}
+                for date_key, count in sorted(self.date_counts.items())
+            ]
+
+            success = generate_html_gallery(gallery_slates, focal_length_data, date_data, self.template_path,
                                             self.output_dir, self.root_dir, self.emit_status)
             if success:
                 message = "Gallery generated."
@@ -139,7 +149,7 @@ class GenerateGalleryThread(QtCore.QThread):
     def process_image(self, image_path):
         try:
             # Import here to avoid circular imports
-            from core.image_processor import get_exif_data, get_orientation
+            from core.image_processor import get_exif_data, get_image_date, get_orientation
 
             exif = get_exif_data(image_path)
             focal_length = exif.get('FocalLength', None)
@@ -160,6 +170,19 @@ class GenerateGalleryThread(QtCore.QThread):
             orientation = get_orientation(image_path, exif)
             filename = os.path.basename(image_path)
 
+            # Extract date information
+            image_date = get_image_date(exif)
+            date_taken = None
+            date_key = None
+
+            if image_date:
+                date_taken = image_date.isoformat()  # ISO format for HTML data attribute
+                date_key = image_date.strftime('%Y-%m')  # YYYY-MM format for grouping
+
+                # Count photos by month
+                with self.date_lock:
+                    self.date_counts[date_key] = self.date_counts.get(date_key, 0) + 1
+
             if focal_length_value:
                 with self.focal_length_lock:
                     self.focal_length_counts[focal_length_value] = self.focal_length_counts.get(focal_length_value, 0) + 1
@@ -168,7 +191,8 @@ class GenerateGalleryThread(QtCore.QThread):
                 'original_path': image_path,
                 'focal_length': focal_length_value,
                 'orientation': orientation,
-                'filename': filename
+                'filename': filename,
+                'date_taken': date_taken
             }
         except Exception as e:
             logger.error(f"Error processing image {image_path}: {e}", exc_info=True)

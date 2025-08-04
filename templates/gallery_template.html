@@ -26,12 +26,17 @@
             background-color: #f44336;
         }
 
+        /* CSS Variables for dynamic sizing */
+        :root {
+            --image-width: 160px;
+        }
+
         /* Body Styles */
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             margin: 0;
             padding: 10px; 
-            padding-top: 70px; 
+            padding-top: 110px; 
             background-color: #f0f0f0; 
         }
 
@@ -77,6 +82,12 @@
             gap: 4px 8px; 
         }
 
+        .date-options {  
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 8px; 
+        }
+
         .button-group {
             margin-top: 8px;  
             display: flex;
@@ -105,18 +116,18 @@
         .size-adjustment {
             display: flex;  
             align-items: center;
-            gap: 8px;  
+            gap: 6px;  
             background-color: rgba(255, 255, 255, 0.95);  
-            padding: 10px;  
+            padding: 8px;  
             border-radius: 8px;  
             box-shadow: 0 2px 6px rgba(0,0,0,0.2);  
             flex: 1 1 100%;  
             position: fixed; 
-            top: 10px; 
+            top: 20px; 
             left: 50%;
             transform: translateX(-50%);
-            width: 95%;  
-            max-width: 700px;  
+            width: 90%;  
+            max-width: 600px;  
             z-index: 900;  
             backdrop-filter: blur(5px);  
         }
@@ -124,7 +135,7 @@
             font-weight: bold;
             color: #555555;
             flex-shrink: 0;
-            font-size: 14px; 
+            font-size: 13px; 
         }
         #size-slider {
             flex-grow: 1;
@@ -135,12 +146,12 @@
             text-align: right;
             color: #333333;
             font-weight: bold;
-            font-size: 14px; 
+            font-size: 13px; 
         }
 
         /* Photo Controls Styles */
         .photo-controls {
-            margin-top: 80px;  
+            margin-top: 120px;  
             margin-bottom: 20px;  
             display: flex;
             gap: 8px;  
@@ -167,24 +178,24 @@
         /* Export Button Styles */
         .export-button {
             position: fixed;
-            top: 60px; /* Adjust based on size-adjustment height */
+            top: 65px; /* Adjust based on size-adjustment height */
             left: 50%;
             transform: translateX(-50%);
             background-color: rgba(255, 255, 255, 0.95);  
-            padding: 10px;  
+            padding: 8px;  
             border-radius: 8px;  
             box-shadow: 0 2px 6px rgba(0,0,0,0.2);  
             z-index: 950; /* Between size-adjustment and notification-bar */
-            width: 95%;  
-            max-width: 700px;  
+            width: 90%;  
+            max-width: 600px;  
             backdrop-filter: blur(5px);  
             text-align: center;
         }
         .export-button button {
             width: 100%; /* Make the button full width */
-            padding: 10px 0;  
+            padding: 8px 0;  
             cursor: pointer;
-            font-size: 16px;  
+            font-size: 14px;  
             background-color: #FFE0B2;  
             color: #E65100;  
             border: none;
@@ -271,7 +282,7 @@
             transform: translateY(-3px);  
         }
         .image-container img {
-            width: 160px;  
+            width: var(--image-width);  
             max-width: none;  
             height: auto;
             display: block;
@@ -481,6 +492,19 @@
                 <button type="button" id="deselect-all-focal-length" aria-label="Deselect All Focal Lengths">Deselect All</button>
             </div>
         </div>
+
+        <div class="filter-group" id="date-filters">
+            <label>Date Taken:</label>
+            <div class="date-options">  
+                {% for date in dates %}
+                    <label><input type="checkbox" class="date-filter" value="{{ date.value }}" aria-label="{{ date.value }}"> {{ date.value }} ({{ date.count }} photos)</label>
+                {% endfor %}
+            </div>
+            <div class="button-group">
+                <button type="button" id="select-all-date" aria-label="Select All Dates">Select All</button>
+                <button type="button" id="deselect-all-date" aria-label="Deselect All Dates">Deselect All</button>
+            </div>
+        </div>
     </div>
 
     <div class="photo-controls">
@@ -504,10 +528,11 @@
                 {% for image in slate.images %}
                     <div class="image-container"
                          data-orientation="{{ image.orientation }}"
-                         data-focal-length="{{ image.focal_length }}">
+                         data-focal-length="{{ image.focal_length }}"
+                         data-date="{{ image.date_taken }}">
                         <input type="checkbox" class="select-checkbox" aria-label="Select {{ image.filename }}">
-                        <!-- Removed loading="lazy" and changed src to data-src -->
-                        <img data-src="{{ image.original_path }}" alt="Photo of {{ image.filename }}">
+                        <!-- Using eager loading for immediate image loading -->
+                        <img src="{{ image.original_path }}" loading="eager" alt="Photo of {{ image.filename }}">
                         <button class="enlarge-button" aria-label="Enlarge {{ image.filename }}">
                             <!-- SVG Magnifying Glass Icon -->
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#ffffff" viewBox="0 0 24 24">
@@ -561,16 +586,24 @@
                 var selectedFocalLengths = [];
                 focalLengthCheckboxes.forEach(cb => { if (cb.checked) selectedFocalLengths.push(cb.value); });
 
+                var dateCheckboxes = document.querySelectorAll('.date-filter');
+                var selectedDates = [];
+                dateCheckboxes.forEach(cb => { if (cb.checked) selectedDates.push(cb.value); });
+
                 var imageContainers = document.getElementsByClassName('image-container');
 
                 for (var img of imageContainers) {
                     var imgOrientation = img.getAttribute('data-orientation');
                     var imgFocalLength = img.getAttribute('data-focal-length');
+                    var imgDate = img.getAttribute('data-date');
 
                     var orientationMatch = selectedOrientations.length === 0 || selectedOrientations.includes(imgOrientation);
                     var focalMatch = selectedFocalLengths.length === 0 || selectedFocalLengths.includes(imgFocalLength.toString());
+                    
+                    // Date matching: extract YYYY-MM from ISO date string and check if it matches any selected month
+                    var dateMatch = selectedDates.length === 0 || (imgDate && selectedDates.some(date => imgDate.startsWith(date)));
 
-                    img.style.display = (orientationMatch && focalMatch) ? 'flex' : 'none';
+                    img.style.display = (orientationMatch && focalMatch && dateMatch) ? 'flex' : 'none';
                 }
 
                 // If modal is open, refresh the visible images list
@@ -642,6 +675,19 @@
                 deselectAllCheckboxes('.focal-length-filter');
             });
 
+            var dateCheckboxes = document.querySelectorAll('.date-filter');
+            dateCheckboxes.forEach(function(checkbox) {
+                checkbox.addEventListener('change', filterImages);
+            });
+
+            document.getElementById('select-all-date').addEventListener('click', function() {
+                selectAllCheckboxes('.date-filter');
+            });
+
+            document.getElementById('deselect-all-date').addEventListener('click', function() {
+                deselectAllCheckboxes('.date-filter');
+            });
+
             // Size slider functionality
             var sizeSlider = document.getElementById('size-slider');
             var sizeValue = document.getElementById('size-value');
@@ -653,10 +699,8 @@
             });
 
             function adjustImageSizes(size) {
-                var images = document.querySelectorAll('.image-container img');
-                images.forEach(function(img) {
-                    img.style.width = size; 
-                });
+                // Use CSS variable for more reliable sizing
+                document.documentElement.style.setProperty('--image-width', size);
             }
 
             document.getElementById('export-to-clipboard').addEventListener('click', function() {
@@ -669,7 +713,7 @@
                     var checkbox = container.querySelector('.select-checkbox');
                     if (checkbox && checkbox.checked) {
                         var imgElement = container.querySelector('img');
-                        var imgPath = imgElement.getAttribute('src') || imgElement.getAttribute('data-src');
+                        var imgPath = imgElement.getAttribute('src');
                         var focalLength = container.getAttribute('data-focal-length');
 
                         var focalLengthFormatted = parseFloat(focalLength);
@@ -828,7 +872,7 @@
                 }
 
                 const imageContainer = image.parentElement;
-                const imgSrc = image.getAttribute('src') || image.getAttribute('data-src');
+                const imgSrc = image.getAttribute('src');
                 const imgAlt = image.getAttribute('alt');
 
                 // Retrieve metadata
@@ -949,32 +993,7 @@
             function initializeGallery() {
                 filterImages();
                 adjustImageSizes(sizeSlider.value + 'px');
-                loadImagesSequentially(); // Start loading images sequentially
-            }
-
-            // Function to load images sequentially, 3 at a time
-            function loadImagesSequentially() {
-                var images = Array.from(document.querySelectorAll('img[data-src]'));
-                var index = 0;
-                var maxConcurrentLoads = 3;
-                var concurrentLoads = 0;
-
-                function loadNext() {
-                    while (concurrentLoads < maxConcurrentLoads && index < images.length) {
-                        var img = images[index];
-                        index++;
-                        concurrentLoads++;
-                        // Set up load and error handlers
-                        img.onload = img.onerror = function() {
-                            concurrentLoads--;
-                            loadNext();
-                        };
-                        // Start loading the image
-                        img.src = img.getAttribute('data-src');
-                    }
-                }
-
-                loadNext();
+                // Images now load immediately with src attribute and loading="eager"
             }
 
             initializeGallery();

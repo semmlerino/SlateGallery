@@ -1,6 +1,7 @@
 """Image processing functions - extracted identically from original SlateGallery.py"""
 
 import os
+from datetime import datetime
 
 from PIL import Image
 from PIL.ExifTags import IFD, TAGS
@@ -21,7 +22,7 @@ def get_exif_data(image_path):
                     # Base EXIF tags
                     for tag, value in exif.items():
                         decoded = TAGS.get(tag, tag)
-                        if decoded in ('FocalLength', 'Orientation'):
+                        if decoded in ('FocalLength', 'Orientation', 'DateTime', 'DateTimeOriginal', 'DateTimeDigitized'):
                             exif_data[decoded] = value
 
                     # EXIF IFD (where FocalLength usually resides)
@@ -29,7 +30,7 @@ def get_exif_data(image_path):
                         exif_ifd = exif.get_ifd(IFD.Exif)
                         for tag, value in exif_ifd.items():
                             decoded = TAGS.get(tag, tag)
-                            if decoded in ('FocalLength', 'Orientation') and decoded not in exif_data:
+                            if decoded in ('FocalLength', 'Orientation', 'DateTime', 'DateTimeOriginal', 'DateTimeDigitized') and decoded not in exif_data:
                                 exif_data[decoded] = value
                     except (KeyError, AttributeError):
                         pass
@@ -43,13 +44,34 @@ def get_exif_data(image_path):
                 if exifinfo:
                     for tag, value in exifinfo.items():
                         decoded = TAGS.get(tag, tag)
-                        if decoded in ('FocalLength', 'Orientation'):
+                        if decoded in ('FocalLength', 'Orientation', 'DateTime', 'DateTimeOriginal', 'DateTimeDigitized'):
                             exif_data[decoded] = value
 
             return exif_data
     except Exception as e:
         logger.error(f"Error extracting EXIF data for {image_path}: {e}", exc_info=True)
         return {}
+
+@log_function
+def get_image_date(exif_data):
+    """Extract the best available date from EXIF data.
+
+    Prioritizes DateTimeOriginal, then DateTimeDigitized, then DateTime.
+    Returns datetime object or None if no valid date found.
+    """
+    date_tags = ['DateTimeOriginal', 'DateTimeDigitized', 'DateTime']
+
+    for tag in date_tags:
+        date_str = exif_data.get(tag)
+        if date_str:
+            try:
+                # EXIF date format is 'YYYY:MM:DD HH:MM:SS'
+                return datetime.strptime(date_str, '%Y:%m:%d %H:%M:%S')
+            except ValueError as e:
+                logger.warning(f"Invalid date format for {tag}: {date_str}, error: {e}")
+                continue
+
+    return None
 
 @log_function
 def get_orientation(image_path, exif_data):
