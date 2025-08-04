@@ -707,7 +707,7 @@
                 var imageContainers = document.getElementsByClassName('image-container');
                 var exportData = [];
                 var lastFolderPath = '';
-                var rootDirectory = '';
+                var currentBasePath = '';
 
                 for (var container of imageContainers) {
                     var checkbox = container.querySelector('.select-checkbox');
@@ -725,17 +725,37 @@
                         var folderPath = imgPath.substring(0, lastSlashIndex);
                         var filename = imgPath.substring(lastSlashIndex + 1);
 
-                        if (exportData.length === 0) {
-                            // First image, set the root directory and output full path
-                            rootDirectory = folderPath.substring(0, folderPath.lastIndexOf('/'));
+                        // Extract base path up to /slates/ for this image
+                        var imgBasePath = '';
+                        var slatesIndex = imgPath.indexOf('/slates/');
+                        if (slatesIndex !== -1) {
+                            imgBasePath = imgPath.substring(0, slatesIndex + 8); // +8 for '/slates/'
+                        }
+
+                        if (exportData.length === 0 || imgBasePath !== currentBasePath) {
+                            // First image OR different show/base path - output full path
                             exportData.push(imgPath + '-' + focalLengthFormatted);
-                        } else if (folderPath !== lastFolderPath) {
-                            // New folder, output relative path from root directory
-                            var relativeFolderPath = folderPath.substring(rootDirectory.length + 1);
-                            exportData.push(relativeFolderPath + '/' + filename + '-' + focalLengthFormatted);
+                            currentBasePath = imgBasePath;
                         } else {
-                            // Same folder, output only filename
-                            exportData.push(filename + '-' + focalLengthFormatted);
+                            // Same base path - use relative format
+                            var relativePath = imgPath.substring(currentBasePath.length);
+                            
+                            // Check if it's the same folder as last time
+                            if (folderPath === lastFolderPath) {
+                                // Same folder - extract slate from relative path and output slate/subdirs/filename
+                                var slateMatch = relativePath.match(/^([A-Z][0-9]+[A-Z])\//);
+                                if (slateMatch) {
+                                    var slate = slateMatch[1];
+                                    var pathAfterSlate = relativePath.substring(slate.length + 1);
+                                    exportData.push(slate + '/' + pathAfterSlate + '-' + focalLengthFormatted);
+                                } else {
+                                    // Fallback to relative path if no slate found
+                                    exportData.push(relativePath + '-' + focalLengthFormatted);
+                                }
+                            } else {
+                                // Different folder - always include full relative path with slate
+                                exportData.push(relativePath + '-' + focalLengthFormatted);
+                            }
                         }
 
                         lastFolderPath = folderPath;
