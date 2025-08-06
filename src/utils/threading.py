@@ -83,6 +83,9 @@ class GenerateGalleryThread(QtCore.QThread):
         # Date-related data structures
         self.date_lock = threading.Lock()
         self.date_counts = {}  # Format: "YYYY-MM-DD": count
+        
+        # Thumbnail directory
+        self.thumb_dir = os.path.join(output_dir, "thumbnails")
 
     def run(self):
         try:
@@ -157,7 +160,7 @@ class GenerateGalleryThread(QtCore.QThread):
     def process_image(self, image_path):
         try:
             # Import here to avoid circular imports
-            from core.image_processor import get_exif_data, get_image_date, get_orientation
+            from core.image_processor import get_exif_data, get_image_date, get_orientation, generate_thumbnail
 
             exif = get_exif_data(image_path)
             focal_length = exif.get("FocalLength", None)
@@ -196,9 +199,18 @@ class GenerateGalleryThread(QtCore.QThread):
                     self.focal_length_counts[focal_length_value] = (
                         self.focal_length_counts.get(focal_length_value, 0) + 1
                     )
+            
+            # Generate thumbnails if enabled
+            thumbnails = {}
+            if self.generate_thumbnails:
+                thumbnails = generate_thumbnail(image_path, self.thumb_dir)
+                logger.debug(f"Generated {len(thumbnails)} thumbnails for {filename}")
 
             return {
                 "original_path": image_path,
+                "thumbnail_400": thumbnails.get("400x400", image_path),  # Fallback to original
+                "thumbnail_800": thumbnails.get("800x800", image_path),  # Fallback to original
+                "thumbnails": thumbnails,  # All thumbnail paths
                 "focal_length": focal_length_value,
                 "orientation": orientation,
                 "filename": filename,

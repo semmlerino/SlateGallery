@@ -287,9 +287,43 @@
             height: auto;
             display: block;
             border-radius: 4px;
-            background-color: #f9f9f9;
+            background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 50%, #f5f5f5 100%);
+            background-size: 200% 200%;
+            animation: shimmer 2s ease-in-out infinite;
             transition: width 0.3s ease, opacity 0.3s ease;
-            cursor: pointer; 
+            cursor: pointer;
+            min-height: 100px; /* Prevent layout shift */
+        }
+        
+        @keyframes shimmer {
+            0% { background-position: 0% 0%; }
+            50% { background-position: 100% 100%; }
+            100% { background-position: 0% 0%; }
+        }
+        
+        /* Loading state for images */
+        .image-container img.loading {
+            opacity: 0.5;
+            filter: blur(5px);
+        }
+        
+        /* Loaded state for images */
+        .image-container img.loaded {
+            opacity: 1;
+            filter: none;
+            background: none;
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { 
+                opacity: 0.5;
+                filter: blur(5px);
+            }
+            to { 
+                opacity: 1;
+                filter: none;
+            }
         }
         .image-info {
             margin-top: 8px;  
@@ -529,10 +563,16 @@
                     <div class="image-container"
                          data-orientation="{{ image.orientation }}"
                          data-focal-length="{{ image.focal_length }}"
-                         data-date="{{ image.date_taken }}">
+                         data-date="{{ image.date_taken }}"
+                         data-full-image="{{ image.original_path }}">
                         <input type="checkbox" class="select-checkbox" aria-label="Select {{ image.filename }}">
-                        <!-- Using eager loading for immediate image loading -->
-                        <img src="{{ image.original_path }}" loading="eager" alt="Photo of {{ image.filename }}">
+                        <!-- Using thumbnails with lazy loading for optimal performance -->
+                        <img src="{{ image.thumbnail_400 | default(image.original_path) }}" 
+                             data-src-medium="{{ image.thumbnail_800 | default(image.original_path) }}"
+                             data-src-full="{{ image.original_path }}"
+                             loading="lazy" 
+                             decoding="async" 
+                             alt="Photo of {{ image.filename }}">
                         <button class="enlarge-button" aria-label="Enlarge {{ image.filename }}">
                             <!-- SVG Magnifying Glass Icon -->
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#ffffff" viewBox="0 0 24 24">
@@ -713,7 +753,8 @@
                     var checkbox = container.querySelector('.select-checkbox');
                     if (checkbox && checkbox.checked) {
                         var imgElement = container.querySelector('img');
-                        var imgPath = imgElement.getAttribute('src');
+                        // Use original full path, not thumbnail
+                        var imgPath = imgElement.getAttribute('data-src-full') || container.getAttribute('data-full-image') || imgElement.getAttribute('src');
                         var focalLength = container.getAttribute('data-focal-length');
 
                         var focalLengthFormatted = parseFloat(focalLength);
@@ -892,7 +933,8 @@
                 }
 
                 const imageContainer = image.parentElement;
-                const imgSrc = image.getAttribute('src');
+                // Use full-size image for modal, fallback to current src
+                const fullSrc = image.getAttribute('data-src-full') || imageContainer.getAttribute('data-full-image') || image.getAttribute('src');
                 const imgAlt = image.getAttribute('alt');
 
                 // Retrieve metadata
@@ -903,7 +945,7 @@
                 let metadataHTML = `<strong>${filename}</strong>`;
                 metadataHTML += focalLength ? `<br>Focal Length: ${focalLength}mm` : '';
 
-                modalImg.src = imgSrc;
+                modalImg.src = fullSrc;
                 modalImg.alt = imgAlt;
                 modalCaption.innerHTML = metadataHTML;
 
@@ -1013,10 +1055,36 @@
             function initializeGallery() {
                 filterImages();
                 adjustImageSizes(sizeSlider.value + 'px');
-                // Images now load immediately with src attribute and loading="eager"
+                // Images use lazy loading for better performance
             }
 
             initializeGallery();
+
+            // Setup Intersection Observer for progressive image loading
+            if ('IntersectionObserver' in window) {
+                const imageObserver = new IntersectionObserver((entries, observer) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            const img = entry.target;
+                            // Image will naturally load due to lazy attribute
+                            img.classList.add('loading');
+                            img.onload = () => {
+                                img.classList.remove('loading');
+                                img.classList.add('loaded');
+                            };
+                        }
+                    });
+                }, {
+                    // Start loading when image is 200px away from viewport
+                    rootMargin: '200px',
+                    threshold: 0.01
+                });
+
+                // Observe all lazy-load images
+                document.querySelectorAll('img[loading="lazy"]').forEach(img => {
+                    imageObserver.observe(img);
+                });
+            }
 
             // Adjust modal image container size on window resize
             window.addEventListener('resize', function() {

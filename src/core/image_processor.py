@@ -1,7 +1,9 @@
 """Image processing functions - extracted identically from original SlateGallery.py"""
 
+import hashlib
 import os
 from datetime import datetime
+from pathlib import Path
 
 from PIL import Image
 from PIL.ExifTags import IFD, TAGS
@@ -144,3 +146,89 @@ def scan_directories(root_dir):
             logger.info(f"Found {len(images_in_dir)} images in slate: {relative_dir}")
 
     return slates
+
+
+@log_function
+def generate_thumbnail(image_path, thumb_dir, sizes=None):
+    """Generate thumbnails for an image at specified sizes.
+    
+    Args:
+        image_path: Path to the original image
+        thumb_dir: Directory to store thumbnails
+        sizes: List of tuples (width, height) for thumbnail sizes
+               Defaults to [(400, 400), (800, 800)]
+    
+    Returns:
+        Dict with thumbnail paths keyed by size string (e.g., "400x400")
+    """
+    if sizes is None:
+        sizes = [(400, 400), (800, 800)]
+    
+    thumbnails = {}
+    
+    try:
+        # Create a unique filename based on image path hash
+        path_hash = hashlib.md5(image_path.encode()).hexdigest()[:8]
+        base_name = Path(image_path).stem
+        
+        # Ensure thumbnail directory exists
+        Path(thumb_dir).mkdir(parents=True, exist_ok=True)
+        
+        # Open image once for all thumbnails
+        with Image.open(image_path) as img:
+            # Convert RGBA to RGB if necessary
+            if img.mode in ('RGBA', 'LA', 'P'):
+                # Create white background
+                rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                # Paste image with alpha channel as mask
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                img = rgb_img
+            
+            # Preserve EXIF orientation
+            exif = img.getexif() if hasattr(img, 'getexif') else None
+            orientation = exif.get(0x0112) if exif else None
+            
+            # Rotate image based on EXIF orientation
+            if orientation:
+                rotations = {
+                    3: 180,
+                    6: 270,
+                    8: 90
+                }
+                if orientation in rotations:
+                    img = img.rotate(rotations[orientation], expand=True)
+            
+            for size in sizes:
+                size_str = f"{size[0]}x{size[1]}"
+                thumb_filename = f"{base_name}_{path_hash}_{size_str}.jpg"
+                thumb_path = os.path.join(thumb_dir, thumb_filename)
+                
+                # Check if thumbnail already exists
+                if os.path.exists(thumb_path):
+                    # Verify it's not corrupted
+                    try:
+                        with Image.open(thumb_path) as test_img:
+                            test_img.verify()
+                        thumbnails[size_str] = thumb_path
+                        logger.debug(f"Thumbnail already exists: {thumb_path}")
+                        continue
+                    except Exception:
+                        # Corrupted thumbnail, regenerate
+                        logger.warning(f"Corrupted thumbnail found, regenerating: {thumb_path}")
+                
+                # Create high-quality thumbnail
+                thumb = img.copy()
+                thumb.thumbnail(size, Image.Resampling.LANCZOS)
+                
+                # Save with optimized quality
+                thumb.save(thumb_path, 'JPEG', quality=85, optimize=True, progressive=True)
+                thumbnails[size_str] = thumb_path
+                logger.debug(f"Generated thumbnail: {thumb_path}")
+        
+        return thumbnails
+        
+    except Exception as e:
+        logger.error(f"Error generating thumbnails for {image_path}: {e}", exc_info=True)
+        return {}
