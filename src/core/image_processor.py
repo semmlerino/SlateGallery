@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageEnhance
 from PIL.ExifTags import IFD, TAGS
 from utils.logging_config import log_function, logger
 
@@ -162,7 +162,7 @@ def generate_thumbnail(image_path, thumb_dir, sizes=None):
         Dict with thumbnail paths keyed by size string (e.g., "400x400")
     """
     if sizes is None:
-        sizes = [(400, 400), (800, 800)]
+        sizes = [(600, 600), (1200, 1200)]
     
     thumbnails = {}
     
@@ -222,8 +222,12 @@ def generate_thumbnail(image_path, thumb_dir, sizes=None):
                 thumb = img.copy()
                 thumb.thumbnail(size, Image.Resampling.LANCZOS)
                 
-                # Save with optimized quality
-                thumb.save(thumb_path, 'JPEG', quality=85, optimize=True, progressive=True)
+                # Apply subtle sharpening for crisper thumbnails
+                sharpener = ImageEnhance.Sharpness(thumb)
+                thumb = sharpener.enhance(1.2)  # Subtle sharpening (1.0 = original, 2.0 = max)
+                
+                # Save with high quality for sharp thumbnails
+                thumb.save(thumb_path, 'JPEG', quality=95, optimize=True, subsampling=0)
                 thumbnails[size_str] = thumb_path
                 logger.debug(f"Generated thumbnail: {thumb_path}")
         

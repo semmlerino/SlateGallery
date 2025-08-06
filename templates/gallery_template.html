@@ -566,11 +566,11 @@
                          data-date="{{ image.date_taken }}"
                          data-full-image="{{ image.original_path }}">
                         <input type="checkbox" class="select-checkbox" aria-label="Select {{ image.filename }}">
-                        <!-- Using thumbnails with lazy loading for optimal performance -->
-                        <img src="{{ image.thumbnail_400 | default(image.original_path) }}" 
-                             data-src-medium="{{ image.thumbnail_800 | default(image.original_path) }}"
+                        <!-- Using high-quality thumbnails with lazy loading for optimal performance -->
+                        <img src="{{ image.thumbnail_600 | default(image.original_path) }}" 
+                             data-src-medium="{{ image.thumbnail_1200 | default(image.original_path) }}"
                              data-src-full="{{ image.original_path }}"
-                             data-original-thumb="{{ image.thumbnail_400 | default(image.original_path) }}"
+                             data-original-thumb="{{ image.thumbnail_600 | default(image.original_path) }}"
                              loading="lazy" 
                              decoding="async" 
                              alt="Photo of {{ image.filename }}">
@@ -745,8 +745,8 @@
                 
                 // Switch to larger thumbnails for bigger sizes
                 var sizeNum = parseInt(size);
-                if (sizeNum > 350) {
-                    // Use 800x800 thumbnails for larger display sizes
+                if (sizeNum > 300) {
+                    // Use 1200x1200 thumbnails for larger display sizes
                     document.querySelectorAll('.image-container img').forEach(function(img) {
                         if (img.hasAttribute('data-src-medium') && !img.classList.contains('using-medium')) {
                             var mediumSrc = img.getAttribute('data-src-medium');
@@ -757,7 +757,7 @@
                         }
                     });
                 } else {
-                    // Revert to 400x400 thumbnails for smaller sizes
+                    // Revert to 600x600 thumbnails for smaller sizes
                     document.querySelectorAll('.image-container img.using-medium').forEach(function(img) {
                         var originalSrc = img.getAttribute('data-original-thumb');
                         if (originalSrc && img.src !== originalSrc) {

@@ -208,8 +208,8 @@ class GenerateGalleryThread(QtCore.QThread):
 
             return {
                 "original_path": image_path,
-                "thumbnail_400": thumbnails.get("400x400", image_path),  # Fallback to original
-                "thumbnail_800": thumbnails.get("800x800", image_path),  # Fallback to original
+                "thumbnail_600": thumbnails.get("600x600", image_path),  # Fallback to original
+                "thumbnail_1200": thumbnails.get("1200x1200", image_path),  # Fallback to original
                 "thumbnails": thumbnails,  # All thumbnail paths
                 "focal_length": focal_length_value,
                 "orientation": orientation,
