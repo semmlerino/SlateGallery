@@ -741,6 +741,35 @@
             function adjustImageSizes(size) {
                 // Use CSS variable for more reliable sizing
                 document.documentElement.style.setProperty('--image-width', size);
+                
+                // Switch to larger thumbnails for bigger sizes
+                var sizeNum = parseInt(size);
+                if (sizeNum > 350) {
+                    // Use 800x800 thumbnails for larger display sizes
+                    document.querySelectorAll('.image-container img').forEach(function(img) {
+                        if (img.hasAttribute('data-src-medium') && !img.classList.contains('using-medium')) {
+                            var mediumSrc = img.getAttribute('data-src-medium');
+                            if (mediumSrc && img.src !== mediumSrc) {
+                                img.src = mediumSrc;
+                                img.classList.add('using-medium');
+                            }
+                        }
+                    });
+                } else {
+                    // Revert to 400x400 thumbnails for smaller sizes
+                    document.querySelectorAll('.image-container img.using-medium').forEach(function(img) {
+                        var smallSrc = img.getAttribute('data-original-thumb');
+                        if (!smallSrc) {
+                            // Store original thumbnail on first switch
+                            img.setAttribute('data-original-thumb', img.src.replace('800x800', '400x400'));
+                            smallSrc = img.getAttribute('data-original-thumb');
+                        }
+                        if (smallSrc && img.src !== smallSrc) {
+                            img.src = smallSrc;
+                            img.classList.remove('using-medium');
+                        }
+                    });
+                }
             }
 
             document.getElementById('export-to-clipboard').addEventListener('click', function() {
