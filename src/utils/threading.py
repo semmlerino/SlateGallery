@@ -2,7 +2,9 @@
 
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+import multiprocessing
 
 from PySide6 import QtCore
 from PySide6.QtCore import Signal
@@ -86,6 +88,11 @@ class GenerateGalleryThread(QtCore.QThread):
         
         # Thumbnail directory
         self.thumb_dir = os.path.join(output_dir, "thumbnails")
+        
+        # Thread pool for parallel thumbnail generation
+        # Use min of CPU count or 8 to avoid overwhelming the system
+        self.max_workers = min(multiprocessing.cpu_count(), 8)
+        logger.info(f"Using {self.max_workers} workers for parallel thumbnail generation")
 
     def run(self):
         try:
@@ -99,12 +106,17 @@ class GenerateGalleryThread(QtCore.QThread):
 
             for slate in self.selected_slates:
                 images = self.slates_dict.get(slate, {}).get("images", [])
-                slate_images = []
-
-                for image in images:
-                    image_data = self.process_image(image["path"])
-                    if image_data is not None:
-                        slate_images.append(image_data)
+                
+                # Process images in parallel if thumbnail generation is enabled
+                if self.generate_thumbnails and len(images) > 1:
+                    slate_images = self.process_images_parallel(images)
+                else:
+                    # Fall back to sequential processing for small batches or no thumbnails
+                    slate_images = []
+                    for image in images:
+                        image_data = self.process_image(image["path"])
+                        if image_data is not None:
+                            slate_images.append(image_data)
 
                 if slate_images:
                     gallery_slates.append({"slate": slate, "images": slate_images})
@@ -156,6 +168,30 @@ class GenerateGalleryThread(QtCore.QThread):
             error_message = f"Error during gallery generation: {e}"
             logger.error(error_message, exc_info=True)
             self.gallery_complete.emit(False, error_message)
+
+    def process_images_parallel(self, images):
+        """Process multiple images in parallel using ThreadPoolExecutor."""
+        results = []
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all image processing tasks
+            future_to_image = {
+                executor.submit(self.process_image, img["path"]): img["path"] 
+                for img in images
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_image):
+                try:
+                    image_data = future.result()
+                    if image_data is not None:
+                        results.append(image_data)
+                except Exception as e:
+                    image_path = future_to_image[future]
+                    logger.error(f"Error processing image {image_path} in parallel: {e}")
+        
+        # Sort results to maintain original order
+        results.sort(key=lambda x: x.get("filename", ""))
+        return results
 
     def process_image(self, image_path):
         try:

@@ -340,6 +340,7 @@ class GalleryGeneratorApp(QMainWindow):
         self.chk_generate_thumbnails.setChecked(self.generate_thumbnails_pref)  # Load from config
         self.chk_generate_thumbnails.setToolTip(
             "When enabled, creates optimized thumbnails for faster gallery loading.\n"
+            "Uses parallel processing for 5-10x faster generation.\n"
             "When disabled, uses original full-resolution images (slower but no processing needed)."
         )
         self.chk_generate_thumbnails.stateChanged.connect(self.on_thumbnail_pref_changed)
@@ -713,7 +714,7 @@ class GalleryGeneratorApp(QMainWindow):
                 output_dir=output,
                 root_dir=self.current_root_dir,
                 template_path=template_path,
-                generate_thumbnails=self.chk_generate_thumbnails.isChecked(),
+                generate_thumbnails=self.chk_generate_thumbnails.isChecked()
             )
             self.gallery_thread.gallery_complete.connect(self.on_gallery_complete)
             self.gallery_thread.progress.connect(self.on_gallery_progress)

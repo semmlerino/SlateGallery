@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from PIL import Image, ImageEnhance
+from PIL import Image
 from PIL.ExifTags import IFD, TAGS
 from utils.logging_config import log_function, logger
 
@@ -156,11 +156,11 @@ def generate_thumbnail(image_path, thumb_dir, sizes=None):
         image_path: Path to the original image
         thumb_dir: Directory to store thumbnails
         sizes: List of tuples (width, height) for thumbnail sizes
-               Defaults to [(400, 400), (800, 800)]
     
     Returns:
-        Dict with thumbnail paths keyed by size string (e.g., "400x400")
+        Dict with thumbnail paths keyed by size string (e.g., "600x600")
     """
+    # Optimized settings for good balance of speed and quality
     if sizes is None:
         sizes = [(600, 600), (1200, 1200)]
     
@@ -218,16 +218,19 @@ def generate_thumbnail(image_path, thumb_dir, sizes=None):
                         # Corrupted thumbnail, regenerate
                         logger.warning(f"Corrupted thumbnail found, regenerating: {thumb_path}")
                 
-                # Create high-quality thumbnail
+                # Create thumbnail with optimized settings for speed and quality
                 thumb = img.copy()
                 thumb.thumbnail(size, Image.Resampling.LANCZOS)
                 
-                # Apply subtle sharpening for crisper thumbnails
-                sharpener = ImageEnhance.Sharpness(thumb)
-                thumb = sharpener.enhance(1.2)  # Subtle sharpening (1.0 = original, 2.0 = max)
-                
-                # Save with high quality for sharp thumbnails
-                thumb.save(thumb_path, 'JPEG', quality=95, optimize=True, subsampling=0)
+                # Save with balanced quality settings
+                # 90% quality is a good balance, no optimize for speed
+                thumb.save(
+                    thumb_path, 
+                    'JPEG', 
+                    quality=90, 
+                    optimize=False,  # Skip for speed
+                    subsampling=1    # Balanced quality/speed
+                )
                 thumbnails[size_str] = thumb_path
                 logger.debug(f"Generated thumbnail: {thumb_path}")
         
