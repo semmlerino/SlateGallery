@@ -570,6 +570,7 @@
                         <img src="{{ image.thumbnail_400 | default(image.original_path) }}" 
                              data-src-medium="{{ image.thumbnail_800 | default(image.original_path) }}"
                              data-src-full="{{ image.original_path }}"
+                             data-original-thumb="{{ image.thumbnail_400 | default(image.original_path) }}"
                              loading="lazy" 
                              decoding="async" 
                              alt="Photo of {{ image.filename }}">
@@ -758,14 +759,9 @@
                 } else {
                     // Revert to 400x400 thumbnails for smaller sizes
                     document.querySelectorAll('.image-container img.using-medium').forEach(function(img) {
-                        var smallSrc = img.getAttribute('data-original-thumb');
-                        if (!smallSrc) {
-                            // Store original thumbnail on first switch
-                            img.setAttribute('data-original-thumb', img.src.replace('800x800', '400x400'));
-                            smallSrc = img.getAttribute('data-original-thumb');
-                        }
-                        if (smallSrc && img.src !== smallSrc) {
-                            img.src = smallSrc;
+                        var originalSrc = img.getAttribute('data-original-thumb');
+                        if (originalSrc && img.src !== originalSrc) {
+                            img.src = originalSrc;
                             img.classList.remove('using-medium');
                         }
                     });

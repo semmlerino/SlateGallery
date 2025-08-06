@@ -702,7 +702,7 @@ class GalleryGeneratorApp(QMainWindow):
                 output_dir=output,
                 root_dir=self.current_root_dir,
                 template_path=template_path,
-                generate_thumbnails=False,
+                generate_thumbnails=True,  # Enable thumbnail generation for performance
             )
             self.gallery_thread.gallery_complete.connect(self.on_gallery_complete)
             self.gallery_thread.progress.connect(self.on_gallery_progress)
