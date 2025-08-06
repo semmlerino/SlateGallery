@@ -743,14 +743,16 @@
                 // Use CSS variable for more reliable sizing
                 document.documentElement.style.setProperty('--image-width', size);
                 
-                // Switch to larger thumbnails for bigger sizes
+                // Switch to larger thumbnails for bigger sizes (only if thumbnails exist)
                 var sizeNum = parseInt(size);
                 if (sizeNum > 300) {
                     // Use 1200x1200 thumbnails for larger display sizes
                     document.querySelectorAll('.image-container img').forEach(function(img) {
                         if (img.hasAttribute('data-src-medium') && !img.classList.contains('using-medium')) {
                             var mediumSrc = img.getAttribute('data-src-medium');
-                            if (mediumSrc && img.src !== mediumSrc) {
+                            var originalThumb = img.getAttribute('data-original-thumb');
+                            // Only switch if medium src is different from original (thumbnails exist)
+                            if (mediumSrc && mediumSrc !== originalThumb && img.src !== mediumSrc) {
                                 img.src = mediumSrc;
                                 img.classList.add('using-medium');
                             }

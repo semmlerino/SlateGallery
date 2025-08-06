@@ -22,6 +22,7 @@ from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QGridLayout,
@@ -86,7 +87,7 @@ class GalleryGeneratorApp(QMainWindow):
         self.setGeometry(100, 100, 900, 700)
 
         # Load configuration with multiple directories
-        self.current_root_dir, self.cached_root_dirs = load_config()
+        self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref = load_config()
         self.output_dir = os.path.expanduser("~")
 
         self.cache_manager = ImprovedCacheManager(
@@ -96,7 +97,7 @@ class GalleryGeneratorApp(QMainWindow):
         if not self.current_root_dir:
             self.current_root_dir = os.path.expanduser("~")
             self.cached_root_dirs.append(self.current_root_dir)
-            save_config(self.current_root_dir, self.cached_root_dirs)
+            save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref)
             logger.info(f"Default root directory set to home directory: {self.current_root_dir}")
 
         self.slates_dict = {}
@@ -334,6 +335,16 @@ class GalleryGeneratorApp(QMainWindow):
         filter_layout.addLayout(list_buttons_layout)
         main_layout.addWidget(filter_group)
 
+        # Add thumbnail generation option
+        self.chk_generate_thumbnails = QCheckBox("Generate thumbnails for faster loading")
+        self.chk_generate_thumbnails.setChecked(self.generate_thumbnails_pref)  # Load from config
+        self.chk_generate_thumbnails.setToolTip(
+            "When enabled, creates optimized thumbnails for faster gallery loading.\n"
+            "When disabled, uses original full-resolution images (slower but no processing needed)."
+        )
+        self.chk_generate_thumbnails.stateChanged.connect(self.on_thumbnail_pref_changed)
+        main_layout.addWidget(self.chk_generate_thumbnails)
+
         btn_generate = QPushButton("Generate Gallery")
         btn_generate.setStyleSheet("""
             QPushButton {
@@ -409,7 +420,7 @@ class GalleryGeneratorApp(QMainWindow):
             )
             if reply == QMessageBox.StandardButton.Yes:
                 self.cached_root_dirs.remove(current_dir)
-                save_config(self.current_root_dir, self.cached_root_dirs)
+                save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref)
                 index = self.cmb_root.findText(current_dir)
                 if index != -1:
                     self.cmb_root.blockSignals(True)
@@ -456,7 +467,7 @@ class GalleryGeneratorApp(QMainWindow):
     def update_cached_dirs(self, new_dir):
         if new_dir and new_dir not in self.cached_root_dirs:
             self.cached_root_dirs.append(new_dir)
-            save_config(new_dir, self.cached_root_dirs)
+            save_config(new_dir, self.cached_root_dirs, self.generate_thumbnails_pref)
             logger.info(f"Added new directory to cached slate directories: {new_dir}")
 
     def on_browse_root(self):
@@ -702,7 +713,7 @@ class GalleryGeneratorApp(QMainWindow):
                 output_dir=output,
                 root_dir=self.current_root_dir,
                 template_path=template_path,
-                generate_thumbnails=True,  # Enable thumbnail generation for performance
+                generate_thumbnails=self.chk_generate_thumbnails.isChecked(),
             )
             self.gallery_thread.gallery_complete.connect(self.on_gallery_complete)
             self.gallery_thread.progress.connect(self.on_gallery_progress)
@@ -749,6 +760,12 @@ class GalleryGeneratorApp(QMainWindow):
         self.lbl_status.setText(f"{message}")
         logger.info(f"Status updated: {message}")
 
+    def on_thumbnail_pref_changed(self):
+        """Save thumbnail preference when checkbox state changes."""
+        self.generate_thumbnails_pref = self.chk_generate_thumbnails.isChecked()
+        save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref)
+        logger.info(f"Thumbnail generation preference changed to: {self.generate_thumbnails_pref}")
+
     def closeEvent(self, event):
         try:
             # Ensure clean shutdown
@@ -756,7 +773,7 @@ class GalleryGeneratorApp(QMainWindow):
             logger.info("Cache manager shutdown successfully.")
             # Save configuration
             root_dir = str(self.cmb_root.currentText()).strip()
-            save_config(root_dir, self.cached_root_dirs)
+            save_config(root_dir, self.cached_root_dirs, self.generate_thumbnails_pref)
             event.accept()
             logger.info("Application closed.")
         except Exception as e:
