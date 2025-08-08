@@ -87,7 +87,7 @@ class GalleryGeneratorApp(QMainWindow):
         self.setGeometry(100, 100, 900, 700)
 
         # Load configuration with multiple directories
-        self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref = load_config()
+        self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref = load_config()
         self.output_dir = os.path.expanduser("~")
 
         self.cache_manager = ImprovedCacheManager(
@@ -97,7 +97,7 @@ class GalleryGeneratorApp(QMainWindow):
         if not self.current_root_dir:
             self.current_root_dir = os.path.expanduser("~")
             self.cached_root_dirs.append(self.current_root_dir)
-            save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref)
+            save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
             logger.info(f"Default root directory set to home directory: {self.current_root_dir}")
 
         self.slates_dict = {}
@@ -335,7 +335,11 @@ class GalleryGeneratorApp(QMainWindow):
         filter_layout.addLayout(list_buttons_layout)
         main_layout.addWidget(filter_group)
 
-        # Add thumbnail generation option
+        # Add thumbnail generation option with size selector
+        thumbnail_widget = QWidget()
+        thumbnail_layout = QHBoxLayout(thumbnail_widget)
+        thumbnail_layout.setContentsMargins(0, 0, 0, 0)
+
         self.chk_generate_thumbnails = QCheckBox("Generate thumbnails for faster loading")
         self.chk_generate_thumbnails.setChecked(self.generate_thumbnails_pref)  # Load from config
         self.chk_generate_thumbnails.setToolTip(
@@ -344,7 +348,43 @@ class GalleryGeneratorApp(QMainWindow):
             "When disabled, uses original full-resolution images (slower but no processing needed)."
         )
         self.chk_generate_thumbnails.stateChanged.connect(self.on_thumbnail_pref_changed)
-        main_layout.addWidget(self.chk_generate_thumbnails)
+
+        # Add thumbnail size dropdown
+        thumbnail_size_label = QLabel("Size:")
+        self.combo_thumbnail_size = QComboBox()
+        self.combo_thumbnail_size.addItems(["600x600", "800x800", "1200x1200"])
+        self.combo_thumbnail_size.setToolTip(
+            "Select the thumbnail resolution:\n"
+            "• 600x600: Smallest files, fastest loading (recommended for web)\n"
+            "• 800x800: Balanced quality and file size\n"
+            "• 1200x1200: Higher quality, larger files (recommended for high-DPI displays)"
+        )
+        # Set the current selection based on config
+        current_size_text = f"{self.thumbnail_size}x{self.thumbnail_size}"
+        index = self.combo_thumbnail_size.findText(current_size_text)
+        if index >= 0:
+            self.combo_thumbnail_size.setCurrentIndex(index)
+        self.combo_thumbnail_size.currentTextChanged.connect(self.on_thumbnail_size_changed)
+        # Enable/disable based on checkbox state
+        self.combo_thumbnail_size.setEnabled(self.chk_generate_thumbnails.isChecked())
+
+        thumbnail_layout.addWidget(self.chk_generate_thumbnails)
+        thumbnail_layout.addWidget(thumbnail_size_label)
+        thumbnail_layout.addWidget(self.combo_thumbnail_size)
+        thumbnail_layout.addStretch()
+
+        main_layout.addWidget(thumbnail_widget)
+
+        # Add lazy loading option
+        self.chk_lazy_loading = QCheckBox("Enable lazy loading (recommended for large galleries)")
+        self.chk_lazy_loading.setChecked(self.lazy_loading_pref)  # Load from config
+        self.chk_lazy_loading.setToolTip(
+            "When enabled, images load progressively as you scroll (better performance).\n"
+            "When disabled, all images load immediately (may be slow for large galleries).\n"
+            "Recommended: ON for galleries with 50+ images, OFF for small galleries."
+        )
+        self.chk_lazy_loading.stateChanged.connect(self.on_lazy_loading_pref_changed)
+        main_layout.addWidget(self.chk_lazy_loading)
 
         btn_generate = QPushButton("Generate Gallery")
         btn_generate.setStyleSheet("""
@@ -421,7 +461,7 @@ class GalleryGeneratorApp(QMainWindow):
             )
             if reply == QMessageBox.StandardButton.Yes:
                 self.cached_root_dirs.remove(current_dir)
-                save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref)
+                save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
                 index = self.cmb_root.findText(current_dir)
                 if index != -1:
                     self.cmb_root.blockSignals(True)
@@ -468,7 +508,7 @@ class GalleryGeneratorApp(QMainWindow):
     def update_cached_dirs(self, new_dir):
         if new_dir and new_dir not in self.cached_root_dirs:
             self.cached_root_dirs.append(new_dir)
-            save_config(new_dir, self.cached_root_dirs, self.generate_thumbnails_pref)
+            save_config(new_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
             logger.info(f"Added new directory to cached slate directories: {new_dir}")
 
     def on_browse_root(self):
@@ -714,7 +754,9 @@ class GalleryGeneratorApp(QMainWindow):
                 output_dir=output,
                 root_dir=self.current_root_dir,
                 template_path=template_path,
-                generate_thumbnails=self.chk_generate_thumbnails.isChecked()
+                generate_thumbnails=self.chk_generate_thumbnails.isChecked(),
+                thumbnail_size=self.thumbnail_size,
+                lazy_loading=self.chk_lazy_loading.isChecked()
             )
             self.gallery_thread.gallery_complete.connect(self.on_gallery_complete)
             self.gallery_thread.progress.connect(self.on_gallery_progress)
@@ -764,8 +806,27 @@ class GalleryGeneratorApp(QMainWindow):
     def on_thumbnail_pref_changed(self):
         """Save thumbnail preference when checkbox state changes."""
         self.generate_thumbnails_pref = self.chk_generate_thumbnails.isChecked()
-        save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref)
-        logger.info(f"Thumbnail generation preference changed to: {self.generate_thumbnails_pref}")
+        # Enable/disable size dropdown based on checkbox state
+        self.combo_thumbnail_size.setEnabled(self.generate_thumbnails_pref)
+        save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
+
+    def on_thumbnail_size_changed(self, text):
+        """Save thumbnail size preference when dropdown changes."""
+        if text:
+            # Extract the size number from the text (e.g., "600x600" -> 600)
+            size_str = text.split('x')[0]
+            try:
+                self.thumbnail_size = int(size_str)
+                save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
+                logger.info(f"Thumbnail size changed to: {self.thumbnail_size}")
+            except ValueError:
+                logger.error(f"Invalid thumbnail size: {text}")
+
+    def on_lazy_loading_pref_changed(self):
+        """Save lazy loading preference when checkbox state changes."""
+        self.lazy_loading_pref = self.chk_lazy_loading.isChecked()
+        save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
+        logger.info(f"Lazy loading preference changed to: {self.lazy_loading_pref}")
 
     def closeEvent(self, event):
         try:
@@ -774,7 +835,7 @@ class GalleryGeneratorApp(QMainWindow):
             logger.info("Cache manager shutdown successfully.")
             # Save configuration
             root_dir = str(self.cmb_root.currentText()).strip()
-            save_config(root_dir, self.cached_root_dirs, self.generate_thumbnails_pref)
+            save_config(root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
             event.accept()
             logger.info("Application closed.")
         except Exception as e:

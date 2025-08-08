@@ -566,12 +566,10 @@
                          data-date="{{ image.date_taken }}"
                          data-full-image="{{ image.original_path }}">
                         <input type="checkbox" class="select-checkbox" aria-label="Select {{ image.filename }}">
-                        <!-- Using high-quality thumbnails with lazy loading for optimal performance -->
-                        <img src="{{ image.thumbnail_600 | default(image.original_path) }}" 
-                             data-src-medium="{{ image.thumbnail_1200 | default(image.original_path) }}"
+                        <!-- Using single optimized thumbnail {% if lazy_loading %}with lazy loading{% endif %} for optimal performance -->
+                        <img src="{{ image.thumbnail | default(image.original_path) }}" 
                              data-src-full="{{ image.original_path }}"
-                             data-original-thumb="{{ image.thumbnail_600 | default(image.original_path) }}"
-                             loading="lazy" 
+                             {% if lazy_loading %}loading="lazy"{% endif %} 
                              decoding="async" 
                              alt="Photo of {{ image.filename }}">
                         <button class="enlarge-button" aria-label="Enlarge {{ image.filename }}">
@@ -742,48 +740,7 @@
             function adjustImageSizes(size) {
                 // Use CSS variable for more reliable sizing
                 document.documentElement.style.setProperty('--image-width', size);
-                
-                // Switch to larger thumbnails for bigger sizes (only if thumbnails exist)
-                var sizeNum = parseInt(size);
-                if (sizeNum > 300) {
-                    // Use 1200x1200 thumbnails for larger display sizes
-                    document.querySelectorAll('.image-container img').forEach(function(img) {
-                        if (img.hasAttribute('data-src-medium') && !img.classList.contains('using-medium')) {
-                            var mediumSrc = img.getAttribute('data-src-medium');
-                            var originalThumb = img.getAttribute('data-original-thumb');
-                            // Only switch if medium src is different from original (thumbnails exist)
-                            if (mediumSrc && mediumSrc !== originalThumb && img.src !== mediumSrc) {
-                                // Reset loading state when switching sources
-                                img.classList.remove('loaded');
-                                img.classList.add('loading');
-                                img.src = mediumSrc;
-                                img.classList.add('using-medium');
-                                // Re-apply load handler for smooth transition
-                                img.onload = () => {
-                                    img.classList.remove('loading');
-                                    img.classList.add('loaded');
-                                };
-                            }
-                        }
-                    });
-                } else {
-                    // Revert to 600x600 thumbnails for smaller sizes
-                    document.querySelectorAll('.image-container img.using-medium').forEach(function(img) {
-                        var originalSrc = img.getAttribute('data-original-thumb');
-                        if (originalSrc && img.src !== originalSrc) {
-                            // Reset loading state when switching sources
-                            img.classList.remove('loaded');
-                            img.classList.add('loading');
-                            img.src = originalSrc;
-                            img.classList.remove('using-medium');
-                            // Re-apply load handler for smooth transition
-                            img.onload = () => {
-                                img.classList.remove('loading');
-                                img.classList.add('loaded');
-                            };
-                        }
-                    });
-                }
+                // No need to switch thumbnail sources since we use a single optimized size
             }
 
             document.getElementById('export-to-clipboard').addEventListener('click', function() {
@@ -1104,6 +1061,7 @@
             initializeGallery();
 
             // Setup Intersection Observer for progressive image loading
+            {% if lazy_loading %}
             if ('IntersectionObserver' in window) {
                 const imageObserver = new IntersectionObserver((entries, observer) => {
                     entries.forEach(entry => {
@@ -1150,6 +1108,19 @@
                     imageObserver.observe(img);
                 });
             }
+            {% else %}
+            // When lazy loading is disabled, all images load immediately
+            // Just set loaded class for all images once they're loaded
+            document.querySelectorAll('.images img').forEach(img => {
+                if (img.complete) {
+                    img.classList.add('loaded');
+                } else {
+                    img.onload = () => {
+                        img.classList.add('loaded');
+                    };
+                }
+            });
+            {% endif %}
 
             // Adjust modal image container size on window resize
             window.addEventListener('resize', function() {

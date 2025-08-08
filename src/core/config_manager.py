@@ -26,6 +26,8 @@ def load_config():
     slate_dirs = []
     current_slate_dir = ""
     generate_thumbnails = False  # Default to original behavior
+    thumbnail_size = 600  # Default thumbnail size
+    lazy_loading = True  # Default to lazy loading enabled
     if os.path.exists(CONFIG_FILE):
         try:
             with codecs.open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -44,39 +46,64 @@ def load_config():
             except (configparser.NoSectionError, configparser.NoOptionError):
                 slate_dirs = []
                 logger.warning("slate_dirs not found in config.")
-            
+
             try:
                 generate_thumbnails = config.getboolean("Settings", "generate_thumbnails")
                 logger.info(f"Loaded generate_thumbnails from config: {generate_thumbnails}")
             except (configparser.NoSectionError, configparser.NoOptionError):
                 generate_thumbnails = False
                 logger.info("generate_thumbnails not found in config, defaulting to False.")
+
+            try:
+                thumbnail_size = config.getint("Settings", "thumbnail_size")
+                # Validate the size is one of the allowed values
+                if thumbnail_size not in [600, 800, 1200]:
+                    thumbnail_size = 600
+                    logger.warning("Invalid thumbnail_size in config, defaulting to 600.")
+                else:
+                    logger.info(f"Loaded thumbnail_size from config: {thumbnail_size}")
+            except (configparser.NoSectionError, configparser.NoOptionError):
+                thumbnail_size = 600
+                logger.info("thumbnail_size not found in config, defaulting to 600.")
+
+            try:
+                lazy_loading = config.getboolean("Settings", "lazy_loading")
+                logger.info(f"Loaded lazy_loading from config: {lazy_loading}")
+            except (configparser.NoSectionError, configparser.NoOptionError):
+                lazy_loading = True
+                logger.info("lazy_loading not found in config, defaulting to True.")
         except Exception as e:
             logger.error(f"Error reading config file: {e}")
             logger.debug(traceback.format_exc())
             current_slate_dir = ""
             slate_dirs = []
             generate_thumbnails = False
+            thumbnail_size = 600
+            lazy_loading = True
     else:
         current_slate_dir = ""
         slate_dirs = []
         generate_thumbnails = False
+        thumbnail_size = 600
+        lazy_loading = True
         logger.warning("Config file not found. Using default settings.")
-    return current_slate_dir, slate_dirs, generate_thumbnails
+    return current_slate_dir, slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading
 
 
 @log_function
-def save_config(current_slate_dir, slate_dirs, generate_thumbnails=False):
+def save_config(current_slate_dir, slate_dirs, generate_thumbnails=False, thumbnail_size=600, lazy_loading=True):
     config = configparser.ConfigParser()
     if not config.has_section("Settings"):
         config.add_section("Settings")
     config.set("Settings", "current_slate_dir", current_slate_dir)
     config.set("Settings", "slate_dirs", "|".join(slate_dirs))
     config.set("Settings", "generate_thumbnails", str(generate_thumbnails))
+    config.set("Settings", "thumbnail_size", str(thumbnail_size))
+    config.set("Settings", "lazy_loading", str(lazy_loading))
     try:
         with codecs.open(CONFIG_FILE, "w", encoding="utf-8") as configfile:
             config.write(configfile)
-        logger.info(f"Configuration saved: current_slate_dir={current_slate_dir}, slate_dirs={slate_dirs}, generate_thumbnails={generate_thumbnails}")
+        logger.info(f"Configuration saved: current_slate_dir={current_slate_dir}, slate_dirs={slate_dirs}, generate_thumbnails={generate_thumbnails}, thumbnail_size={thumbnail_size}, lazy_loading={lazy_loading}")
     except Exception as e:
         logger.error(f"Error saving configuration: {e}")
         logger.debug(traceback.format_exc())

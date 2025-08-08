@@ -10,7 +10,7 @@ from utils.logging_config import log_function, logger
 
 @log_function
 def generate_html_gallery(
-    gallery_data, focal_length_data, date_data, template_path, output_dir, root_dir, status_callback
+    gallery_data, focal_length_data, date_data, template_path, output_dir, root_dir, status_callback, lazy_loading=True
 ):
     try:
         # Process image paths
@@ -41,7 +41,7 @@ def generate_html_gallery(
         template = env.get_template(os.path.basename(template_path))
 
         try:
-            output_html = template.render(gallery=gallery_data, focal_lengths=focal_length_data, dates=date_data)
+            output_html = template.render(gallery=gallery_data, focal_lengths=focal_length_data, dates=date_data, lazy_loading=lazy_loading)
         except Exception as e:
             status_callback(f"Error rendering template: {e}")
             logger.error(f"Error rendering template: {e}", exc_info=True)

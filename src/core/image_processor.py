@@ -15,6 +15,11 @@ from utils.logging_config import log_function, logger
 @log_function
 def get_exif_data(image_path):
     try:
+        # Skip macOS resource fork files as a last line of defense
+        if os.path.basename(image_path).startswith("._"):
+            logger.debug(f"Skipping macOS resource fork file in get_exif_data: {image_path}")
+            return {}
+
         with Image.open(image_path) as image:
             exif_data = {}
 
@@ -135,6 +140,9 @@ def scan_directories(root_dir):
         logger.info(f"Scanning directory: {dirpath}")
         images_in_dir = []
         for f in filenames:
+            # Skip macOS resource fork files (._*)
+            if f.startswith("._"):
+                continue
             if os.path.splitext(f)[1].lower() in image_extensions:
                 images_in_dir.append(f)
 
@@ -149,31 +157,40 @@ def scan_directories(root_dir):
 
 
 @log_function
-def generate_thumbnail(image_path, thumb_dir, sizes=None):
-    """Generate thumbnails for an image at specified sizes.
-    
+def generate_thumbnail(image_path, thumb_dir, size=None):
+    """Generate a thumbnail for an image at specified size.
+
     Args:
         image_path: Path to the original image
         thumb_dir: Directory to store thumbnails
-        sizes: List of tuples (width, height) for thumbnail sizes
-    
+        size: Single size as an integer (e.g., 600 for 600x600) or tuple (width, height)
+
     Returns:
-        Dict with thumbnail paths keyed by size string (e.g., "600x600")
+        Dict with thumbnail path keyed by size string (e.g., "600x600")
     """
     # Optimized settings for good balance of speed and quality
-    if sizes is None:
-        sizes = [(600, 600), (1200, 1200)]
-    
+    if size is None:
+        size = 600
+
+    # Convert single integer to tuple
+    if isinstance(size, int):
+        sizes = [(size, size)]
+    elif isinstance(size, tuple):
+        sizes = [size]
+    else:
+        # Fallback to default
+        sizes = [(600, 600)]
+
     thumbnails = {}
-    
+
     try:
         # Create a unique filename based on image path hash
         path_hash = hashlib.md5(image_path.encode()).hexdigest()[:8]
         base_name = Path(image_path).stem
-        
+
         # Ensure thumbnail directory exists
         Path(thumb_dir).mkdir(parents=True, exist_ok=True)
-        
+
         # Open image once for all thumbnails
         with Image.open(image_path) as img:
             # Convert RGBA to RGB if necessary
@@ -185,11 +202,11 @@ def generate_thumbnail(image_path, thumb_dir, sizes=None):
                     img = img.convert('RGBA')
                 rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
                 img = rgb_img
-            
+
             # Preserve EXIF orientation
             exif = img.getexif() if hasattr(img, 'getexif') else None
             orientation = exif.get(0x0112) if exif else None
-            
+
             # Rotate image based on EXIF orientation
             if orientation:
                 rotations = {
@@ -199,12 +216,12 @@ def generate_thumbnail(image_path, thumb_dir, sizes=None):
                 }
                 if orientation in rotations:
                     img = img.rotate(rotations[orientation], expand=True)
-            
+
             for size in sizes:
                 size_str = f"{size[0]}x{size[1]}"
                 thumb_filename = f"{base_name}_{path_hash}_{size_str}.jpg"
                 thumb_path = os.path.join(thumb_dir, thumb_filename)
-                
+
                 # Check if thumbnail already exists
                 if os.path.exists(thumb_path):
                     # Verify it's not corrupted
@@ -217,25 +234,25 @@ def generate_thumbnail(image_path, thumb_dir, sizes=None):
                     except Exception:
                         # Corrupted thumbnail, regenerate
                         logger.warning(f"Corrupted thumbnail found, regenerating: {thumb_path}")
-                
+
                 # Create thumbnail with optimized settings for speed and quality
                 thumb = img.copy()
                 thumb.thumbnail(size, Image.Resampling.LANCZOS)
-                
+
                 # Save with balanced quality settings
                 # 90% quality is a good balance, no optimize for speed
                 thumb.save(
-                    thumb_path, 
-                    'JPEG', 
-                    quality=90, 
+                    thumb_path,
+                    'JPEG',
+                    quality=90,
                     optimize=False,  # Skip for speed
                     subsampling=1    # Balanced quality/speed
                 )
                 thumbnails[size_str] = thumb_path
                 logger.debug(f"Generated thumbnail: {thumb_path}")
-        
+
         return thumbnails
-        
+
     except Exception as e:
         logger.error(f"Error generating thumbnails for {image_path}: {e}", exc_info=True)
         return {}
