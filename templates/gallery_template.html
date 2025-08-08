@@ -753,8 +753,16 @@
                             var originalThumb = img.getAttribute('data-original-thumb');
                             // Only switch if medium src is different from original (thumbnails exist)
                             if (mediumSrc && mediumSrc !== originalThumb && img.src !== mediumSrc) {
+                                // Reset loading state when switching sources
+                                img.classList.remove('loaded');
+                                img.classList.add('loading');
                                 img.src = mediumSrc;
                                 img.classList.add('using-medium');
+                                // Re-apply load handler for smooth transition
+                                img.onload = () => {
+                                    img.classList.remove('loading');
+                                    img.classList.add('loaded');
+                                };
                             }
                         }
                     });
@@ -763,8 +771,16 @@
                     document.querySelectorAll('.image-container img.using-medium').forEach(function(img) {
                         var originalSrc = img.getAttribute('data-original-thumb');
                         if (originalSrc && img.src !== originalSrc) {
+                            // Reset loading state when switching sources
+                            img.classList.remove('loaded');
+                            img.classList.add('loading');
                             img.src = originalSrc;
                             img.classList.remove('using-medium');
+                            // Re-apply load handler for smooth transition
+                            img.onload = () => {
+                                img.classList.remove('loading');
+                                img.classList.add('loaded');
+                            };
                         }
                     });
                 }
@@ -1093,12 +1109,21 @@
                     entries.forEach(entry => {
                         if (entry.isIntersecting) {
                             const img = entry.target;
-                            // Image will naturally load due to lazy attribute
-                            img.classList.add('loading');
-                            img.onload = () => {
-                                img.classList.remove('loading');
+                            // Only add loading state if image isn't already loaded
+                            if (!img.complete && !img.classList.contains('loaded')) {
+                                img.classList.add('loading');
+                                img.onload = () => {
+                                    img.classList.remove('loading');
+                                    img.classList.add('loaded');
+                                };
+                                img.onerror = () => {
+                                    img.classList.remove('loading');
+                                    // Don't add 'loaded' on error to maintain loading shimmer
+                                };
+                            } else if (img.complete && !img.classList.contains('loaded')) {
+                                // Image was already cached/loaded
                                 img.classList.add('loaded');
-                            };
+                            }
                         }
                     });
                 }, {
@@ -1109,6 +1134,19 @@
 
                 // Observe all lazy-load images
                 document.querySelectorAll('img[loading="lazy"]').forEach(img => {
+                    // Set initial state for images already in cache
+                    if (img.complete) {
+                        img.classList.add('loaded');
+                    } else {
+                        // Ensure load handler is set for images not yet loaded
+                        img.onload = () => {
+                            img.classList.remove('loading');
+                            img.classList.add('loaded');
+                        };
+                        img.onerror = () => {
+                            img.classList.remove('loading');
+                        };
+                    }
                     imageObserver.observe(img);
                 });
             }
