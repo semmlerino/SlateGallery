@@ -1,4 +1,0 @@
-"""SlateGallery - A modular photo gallery generator."""
-
-__version__ = "2.0.0"
-__author__ = "SlateGallery Team"

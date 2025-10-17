@@ -120,7 +120,7 @@ def get_orientation(image_path: str, exif_data: dict[str, object]) -> str:
         finally:
             if image and hasattr(image, "fp") and image.fp and hasattr(image.fp, "close"):
                 try:
-                    image.fp.close()
+                    _ = image.fp.close()
                 except Exception:
                     pass
 

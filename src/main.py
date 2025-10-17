@@ -10,6 +10,7 @@ import os
 import sys
 import webbrowser
 from typing import Optional
+from typing_extensions import override
 
 # Add src to path for imports
 sys.path.insert(0, str(os.path.dirname(os.path.abspath(__file__))))
@@ -58,7 +59,7 @@ class CustomFileDialog(QFileDialog):
         # Create path input widget (though it appears unused in current implementation)
         self.path_input = QLineEdit()
 
-        self.directoryEntered.connect(self.update_path_input)
+        _ = self.directoryEntered.connect(self.update_path_input)
 
         current_path = self.directory().absolutePath()
         self.update_path_input(current_path)
@@ -69,7 +70,7 @@ class CustomFileDialog(QFileDialog):
         if os.path.exists(path):
             self.setDirectory(path)
         else:
-            QMessageBox.warning(self, "Invalid Path", "The specified path does not exist.")
+            _ = QMessageBox.warning(self, "Invalid Path", "The specified path does not exist.")
             logger.warning(f"User attempted to navigate to invalid path: {path}")
 
     @log_function
@@ -113,7 +114,7 @@ class GalleryGeneratorApp(QMainWindow):
         # Set up debounced filtering timer
         self.filter_timer = QTimer()
         self.filter_timer.setSingleShot(True)  # Only fire once per timeout period
-        self.filter_timer.timeout.connect(self.apply_filters_debounced)
+        _ = self.filter_timer.timeout.connect(self.apply_filters_debounced)
         self.filter_delay = 300  # 300ms delay after user stops typing
 
         # Set up the UI
@@ -238,16 +239,16 @@ class GalleryGeneratorApp(QMainWindow):
         else:
             self.cmb_root.setCurrentIndex(0)
             self.cmb_root.setEditText(self.current_root_dir)
-        self.cmb_root.currentIndexChanged.connect(self.on_root_dir_changed)
+        _ = self.cmb_root.currentIndexChanged.connect(self.on_root_dir_changed)
 
         self.cmb_root.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
         self.cmb_root.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.cmb_root.customContextMenuRequested.connect(self.open_context_menu)
+        _ = self.cmb_root.customContextMenuRequested.connect(self.open_context_menu)
 
         dir_layout.addWidget(self.cmb_root, 0, 1)
 
         btn_browse_root = QPushButton("Browse")
-        btn_browse_root.clicked.connect(self.on_browse_root)
+        _ = btn_browse_root.clicked.connect(self.on_browse_root)
         dir_layout.addWidget(btn_browse_root, 0, 2)
 
         dir_layout.setColumnStretch(0, 0)
@@ -269,7 +270,7 @@ class GalleryGeneratorApp(QMainWindow):
                 background-color: #64B5F6;
             }
         """)
-        btn_scan.clicked.connect(self.on_scan)
+        _ = btn_scan.clicked.connect(self.on_scan)
         main_layout.addWidget(btn_scan)
 
         # Filter group
@@ -283,7 +284,7 @@ class GalleryGeneratorApp(QMainWindow):
         filter_input_layout.addWidget(lbl_filter)
 
         self.txt_filter = QLineEdit()
-        self.txt_filter.textChanged.connect(self.on_filter)
+        _ = self.txt_filter.textChanged.connect(self.on_filter)
         filter_input_layout.addWidget(self.txt_filter)
 
         filter_layout.addLayout(filter_input_layout)
@@ -300,16 +301,16 @@ class GalleryGeneratorApp(QMainWindow):
         selection_buttons_layout = QVBoxLayout()
 
         btn_select_all = QPushButton("Select All")
-        btn_select_all.clicked.connect(self.on_select_all)
+        _ = btn_select_all.clicked.connect(self.on_select_all)
         selection_buttons_layout.addWidget(btn_select_all)
 
         btn_deselect_all = QPushButton("Deselect All")
-        btn_deselect_all.clicked.connect(self.on_deselect_all)
+        _ = btn_deselect_all.clicked.connect(self.on_deselect_all)
         selection_buttons_layout.addWidget(btn_deselect_all)
 
         # Add Refresh button
         btn_refresh = QPushButton("Refresh")
-        btn_refresh.clicked.connect(self.on_refresh)
+        _ = btn_refresh.clicked.connect(self.on_refresh)
 
         # Apply custom stylesheet for the Refresh button
         btn_refresh.setStyleSheet("""
@@ -349,20 +350,20 @@ class GalleryGeneratorApp(QMainWindow):
         self.chk_generate_thumbnails = QCheckBox("Generate thumbnails for faster loading")
         self.chk_generate_thumbnails.setChecked(self.generate_thumbnails_pref)  # Load from config
         self.chk_generate_thumbnails.setToolTip(
-            "When enabled, creates optimized thumbnails for faster gallery loading.\n"
-            "Uses parallel processing for 5-10x faster generation.\n"
+            "When enabled, creates optimized thumbnails for faster gallery loading.\n" +
+            "Uses parallel processing for 5-10x faster generation.\n" +
             "When disabled, uses original full-resolution images (slower but no processing needed)."
         )
-        self.chk_generate_thumbnails.stateChanged.connect(self.on_thumbnail_pref_changed)
+        _ = self.chk_generate_thumbnails.stateChanged.connect(self.on_thumbnail_pref_changed)
 
         # Add thumbnail size dropdown
         thumbnail_size_label = QLabel("Size:")
         self.combo_thumbnail_size = QComboBox()
         self.combo_thumbnail_size.addItems(["600x600", "800x800", "1200x1200"])
         self.combo_thumbnail_size.setToolTip(
-            "Select the thumbnail resolution:\n"
-            "• 600x600: Smallest files, fastest loading (recommended for web)\n"
-            "• 800x800: Balanced quality and file size\n"
+            "Select the thumbnail resolution:\n" +
+            "• 600x600: Smallest files, fastest loading (recommended for web)\n" +
+            "• 800x800: Balanced quality and file size\n" +
             "• 1200x1200: Higher quality, larger files (recommended for high-DPI displays)"
         )
         # Set the current selection based on config
@@ -370,7 +371,7 @@ class GalleryGeneratorApp(QMainWindow):
         index = self.combo_thumbnail_size.findText(current_size_text)
         if index >= 0:
             self.combo_thumbnail_size.setCurrentIndex(index)
-        self.combo_thumbnail_size.currentTextChanged.connect(self.on_thumbnail_size_changed)
+        _ = self.combo_thumbnail_size.currentTextChanged.connect(self.on_thumbnail_size_changed)
         # Enable/disable based on checkbox state
         self.combo_thumbnail_size.setEnabled(self.chk_generate_thumbnails.isChecked())
 
@@ -385,11 +386,11 @@ class GalleryGeneratorApp(QMainWindow):
         self.chk_lazy_loading = QCheckBox("Enable lazy loading (recommended for large galleries)")
         self.chk_lazy_loading.setChecked(self.lazy_loading_pref)  # Load from config
         self.chk_lazy_loading.setToolTip(
-            "When enabled, images load progressively as you scroll (better performance).\n"
-            "When disabled, all images load immediately (may be slow for large galleries).\n"
+            "When enabled, images load progressively as you scroll (better performance).\n" +
+            "When disabled, all images load immediately (may be slow for large galleries).\n" +
             "Recommended: ON for galleries with 50+ images, OFF for small galleries."
         )
-        self.chk_lazy_loading.stateChanged.connect(self.on_lazy_loading_pref_changed)
+        _ = self.chk_lazy_loading.stateChanged.connect(self.on_lazy_loading_pref_changed)
         main_layout.addWidget(self.chk_lazy_loading)
 
         btn_generate = QPushButton("Generate Gallery")
@@ -408,7 +409,7 @@ class GalleryGeneratorApp(QMainWindow):
                 color: #9E9E9E;
             }
         """)
-        btn_generate.clicked.connect(self.on_generate)
+        _ = btn_generate.clicked.connect(self.on_generate)
         main_layout.addWidget(btn_generate)
 
         self.btn_generate = btn_generate
@@ -429,7 +430,7 @@ class GalleryGeneratorApp(QMainWindow):
                 color: #9E9E9E;
             }
         """)
-        btn_open_gallery.clicked.connect(self.on_open_gallery)
+        _ = btn_open_gallery.clicked.connect(self.on_open_gallery)
         btn_open_gallery.setEnabled(False)
         main_layout.addWidget(btn_open_gallery)
 
@@ -448,11 +449,11 @@ class GalleryGeneratorApp(QMainWindow):
     def open_context_menu(self, position):
         menu = QMenu()
         delete_action = QAction("Delete Cached Directory", self)
-        delete_action.triggered.connect(self.delete_cached_directory)
-        menu.addAction(delete_action)
+        _ = delete_action.triggered.connect(self.delete_cached_directory)
+        _ = menu.addAction(delete_action)
         if len(self.cached_root_dirs) <= 1:
             delete_action.setEnabled(False)
-        menu.exec_(self.cmb_root.mapToGlobal(position))
+        _ = menu.exec_(self.cmb_root.mapToGlobal(position))
 
     @log_function
     def delete_cached_directory(self, checked=False):
@@ -470,9 +471,9 @@ class GalleryGeneratorApp(QMainWindow):
                 save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
                 index = self.cmb_root.findText(current_dir)
                 if index != -1:
-                    self.cmb_root.blockSignals(True)
-                    self.cmb_root.removeItem(index)
-                    self.cmb_root.blockSignals(False)
+                    _ = self.cmb_root.blockSignals(True)
+                    _ = self.cmb_root.removeItem(index)
+                    _ = self.cmb_root.blockSignals(False)
                     logger.info(f"Deleted cached directory: {current_dir}")
                 else:
                     logger.warning(f"Directory not found in QComboBox: {current_dir}")
@@ -491,7 +492,7 @@ class GalleryGeneratorApp(QMainWindow):
                 else:
                     self.current_root_dir = ""
                     self.update_status("No cached directories available. Please add a new slate directory.")
-                    QMessageBox.information(
+                    _ = QMessageBox.information(
                         self,
                         "No Directories",
                         "All cached directories have been deleted. Please add a new slate directory.",
@@ -499,7 +500,7 @@ class GalleryGeneratorApp(QMainWindow):
                     )
                     logger.info("All cached directories deleted. Awaiting new directory selection.")
         else:
-            QMessageBox.warning(self, "Deletion Error", "The selected directory is not in the cached list.")
+            _ = QMessageBox.warning(self, "Deletion Error", "The selected directory is not in the cached list.")
             logger.warning(f"Attempted to delete a non-cached directory: {current_dir}")
 
     @log_function
@@ -564,8 +565,8 @@ class GalleryGeneratorApp(QMainWindow):
             else:
                 # Start scan thread
                 self.scan_thread = ScanThread(root_path, self.cache_manager)
-                self.scan_thread.scan_complete.connect(self.on_scan_complete)
-                self.scan_thread.progress.connect(self.on_scan_progress)
+                _ = self.scan_thread.scan_complete.connect(self.on_scan_complete)
+                _ = self.scan_thread.progress.connect(self.on_scan_progress)
                 self.scan_thread.start()
                 logger.debug("Scan thread started.")
         except Exception as e:
@@ -701,8 +702,8 @@ class GalleryGeneratorApp(QMainWindow):
 
             # Start scan thread to re-scan and update cache
             self.scan_thread = ScanThread(root_path, self.cache_manager)
-            self.scan_thread.scan_complete.connect(self.on_scan_complete)
-            self.scan_thread.progress.connect(self.on_scan_progress)
+            _ = self.scan_thread.scan_complete.connect(self.on_scan_complete)
+            _ = self.scan_thread.progress.connect(self.on_scan_progress)
             self.scan_thread.start()
             logger.debug("Refresh scan thread started.")
         except Exception as e:
@@ -764,8 +765,8 @@ class GalleryGeneratorApp(QMainWindow):
                 thumbnail_size=self.thumbnail_size,
                 lazy_loading=self.chk_lazy_loading.isChecked()
             )
-            self.gallery_thread.gallery_complete.connect(self.on_gallery_complete)
-            self.gallery_thread.progress.connect(self.on_gallery_progress)
+            _ = self.gallery_thread.gallery_complete.connect(self.on_gallery_complete)
+            _ = self.gallery_thread.progress.connect(self.on_gallery_progress)
             self.gallery_thread.start()
             logger.debug("Gallery generation thread started.")
         except Exception as e:
@@ -793,7 +794,7 @@ class GalleryGeneratorApp(QMainWindow):
             if os.path.exists(html_file_path):
                 # Use webbrowser module to open the file in the default browser
                 url = "file://" + os.path.abspath(html_file_path)
-                webbrowser.open(url, new=2)  # new=2 opens in a new window if possible
+                _ = webbrowser.open(url, new=2)  # new=2 opens in a new window if possible
                 logger.info(f"Opened gallery at: {html_file_path}")
                 self.update_status("Opening gallery in new browser window...")
             else:
@@ -834,6 +835,7 @@ class GalleryGeneratorApp(QMainWindow):
         save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
         logger.info(f"Lazy loading preference changed to: {self.lazy_loading_pref}")
 
+    @override
     def closeEvent(self, event):
         try:
             # Ensure clean shutdown

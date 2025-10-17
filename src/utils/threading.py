@@ -6,6 +6,7 @@ import threading
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Any, Optional
+from typing_extensions import override
 
 from PySide6 import QtCore
 from PySide6.QtCore import Signal
@@ -31,7 +32,8 @@ class ScanThread(QtCore.QThread):
         self.cache_manager: Any = cache_manager
 
     @log_function
-    def run(self) -> None:  # type: ignore[override]
+    @override
+    def run(self) -> None:
         try:
             # Import here to avoid circular imports
             from core.image_processor import scan_directories
@@ -113,7 +115,8 @@ class GenerateGalleryThread(QtCore.QThread):
         self.max_workers: int = min(multiprocessing.cpu_count() * 2, 16)
         logger.info(f"Using {self.max_workers} workers for parallel image processing")
 
-    def run(self) -> None:  # type: ignore[override]
+    @override
+    def run(self) -> None:
         try:
             logger.info("Generating Gallery...")
             self.progress.emit(0)
