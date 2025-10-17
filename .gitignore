@@ -70,11 +70,11 @@ logs/
 *.tmp
 *.temp
 
-# Legacy/Archive - DO NOT COMMIT
+# Legacy/Archive - DO NOT COMMIT (root directory only)
 archive/
 SlateGallery.py
 SlateGallery_new.py
-test_*.py
+/test_*.py
 update_tests_for_modular.py
 create_test_images.py
 modern_exif_*.py
