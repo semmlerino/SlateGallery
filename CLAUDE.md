@@ -53,13 +53,25 @@ basedpyright src/      # Type checking
 
 ## Testing
 
+### Test Documentation
+
+**Comprehensive testing guides available**:
+- 📘 **TESTING_BEST_PRACTICES.md** - General Python/pytest best practices from industry research
+- 📗 **QT_TESTING_BEST_PRACTICES.md** - Qt-specific testing patterns and anti-patterns
+- 📕 **THREADING_ERROR_TESTS_GUIDE.md** - Ready-to-implement threading error tests
+- 📙 **README_TESTING.md** - Quick start guide for running tests
+
 ### Test Suite Overview
 - **163 total tests** covering all major functionality and real-world scenarios
 - **Test framework**: pytest with pytest-qt for Qt components
-- **Coverage areas**: Image processing, config, cache, gallery generation, threading, performance, integration
-- **New test files**:
+- **Current coverage**: 45% overall (625/1,127 lines)
+  - ✅ Excellent: image_processor (97%), config_manager (98%), gallery_generator (95%), cache_manager (94%)
+  - ⚠️ Needs improvement: threading (44%), main UI (0%)
+- **Coverage goals**: 45% → 60% (immediate), 60% → 70% (short-term)
+- **Key test files**:
   - `test_integration_realistic.py` - Real-world integration tests without mocking
   - `test_performance_benchmark.py` - Performance benchmarking suite
+  - `test_threading_errors.py` - Threading error scenarios (to be implemented, see THREADING_ERROR_TESTS_GUIDE.md)
 
 ### Running Tests
 
@@ -235,11 +247,14 @@ For GitHub Actions or similar:
 
 1. **Always run linting** after making code changes: `ruff check src/ --fix && basedpyright src/`
 2. **Test in headless mode** if no display available: use `xvfb-run` or `./run_tests.sh`
-3. **Check for macOS files**: Remember to filter `._*` files when processing images
-4. **Thread safety**: Always properly cleanup Qt threads to prevent crashes
-5. **Config changes**: Remember config now returns 5 values including thumbnail and lazy loading preferences
-6. **Date format**: Use YYYY-MM-DD for date keys, not YYYY-MM
-7. **Performance**: Parallel processing is now always enabled for EXIF extraction (fixed bottleneck)
-8. **Worker optimization**: Worker count is now 2x CPU cores for I/O operations (up to 16 workers)
+3. **Testing documentation**: Comprehensive guides available in TESTING_BEST_PRACTICES.md and THREADING_ERROR_TESTS_GUIDE.md
+4. **Coverage gaps**: Priority #1 is threading error tests (44% → 60% coverage gain, 2-4 hours)
+5. **Check for macOS files**: Remember to filter `._*` files when processing images
+6. **Thread safety**: Always properly cleanup Qt threads to prevent crashes
+7. **Config changes**: Remember config now returns 5 values including thumbnail and lazy loading preferences
+8. **Date format**: Use YYYY-MM-DD for date keys, not YYYY-MM
+9. **Performance**: Parallel processing is now always enabled for EXIF extraction (fixed bottleneck)
+10. **Worker optimization**: Worker count is now 2x CPU cores for I/O operations (up to 16 workers)
+11. **Type safety**: Project uses basedpyright in "recommended" mode with 0 errors, 251 warnings (production-ready)
 
-Last updated: 2025-08-08
+Last updated: 2025-10-17
