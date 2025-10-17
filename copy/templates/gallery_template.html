@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Slate Photography Gallery</title>
+    <style>
+        /* Notification Bar Styles */
+        .notification-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: #4CAF50;
+            color: white;
+            text-align: center;
+            padding: 8px; 
+            font-size: 12px; 
+            transform: translateY(-100%);
+            transition: transform 0.3s ease-in-out;
+            z-index: 1000;
+        }
+        .notification-bar.show {
+            transform: translateY(0);
+        }
+        .notification-bar.error {
+            background-color: #f44336;
+        }
+
+        /* CSS Variables for dynamic sizing */
+        :root {
+            --image-width: 160px;
+        }
+
+        /* Body Styles */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 10px; 
+            padding-top: 110px; 
+            background-color: #f0f0f0; 
+        }
+
+        /* Main Title Styles */
+        h1 {
+            text-align: center;
+            margin-bottom: 20px; 
+            color: #333333;
+            font-size: 28px; 
+        }
+
+        /* Filters Section Styles */
+        .filters {
+            margin-bottom: 20px; 
+            display: flex; 
+            flex-wrap: wrap;
+            gap: 15px; 
+            justify-content: space-between;
+            align-items: center;
+        }
+        .filter-group {
+            flex: 1 1 120px; 
+            background-color: #ffffff;
+            padding: 8px; 
+            border-radius: 6px; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .filter-group label {
+            display: block;
+            margin-bottom: 4px;  
+            font-weight: bold;
+            color: #555555;
+            font-size: 13px;  
+        }
+        .filter-group input[type="checkbox"] {
+            margin-right: 4px;  
+            transform: scale(1.1);  
+        }
+
+        .focal-length-options {  
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 8px; 
+        }
+
+        .date-options {  
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 8px; 
+        }
+
+        .button-group {
+            margin-top: 8px;  
+            display: flex;
+            gap: 8px;  
+        }
+        .button-group button {
+            flex: 1;
+            padding: 6px 10px;  
+            cursor: pointer;
+            font-size: 13px; 
+            background-color: #ADD8E6;  
+            color: #0D47A1;  
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.2s ease, transform 0.15s ease;
+        }
+        .button-group button:hover {
+            background-color: #81D4FA;  
+        }
+        .button-group button:active {
+            background-color: #4FC3F7;  
+            transform: scale(0.98);
+        }
+
+        /* Size Adjustment Styles */
+        .size-adjustment {
+            display: flex;  
+            align-items: center;
+            gap: 6px;  
+            background-color: rgba(255, 255, 255, 0.95);  
+            padding: 8px;  
+            border-radius: 8px;  
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);  
+            flex: 1 1 100%;  
+            position: fixed; 
+            top: 20px; 
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;  
+            max-width: 600px;  
+            z-index: 900;  
+            backdrop-filter: blur(5px);  
+        }
+        .size-adjustment label {
+            font-weight: bold;
+            color: #555555;
+            flex-shrink: 0;
+            font-size: 13px; 
+        }
+        #size-slider {
+            flex-grow: 1;
+            cursor: pointer;
+        }
+        #size-value {
+            width: 60px;  
+            text-align: right;
+            color: #333333;
+            font-weight: bold;
+            font-size: 13px; 
+        }
+
+        /* Photo Controls Styles */
+        .photo-controls {
+            margin-top: 120px;  
+            margin-bottom: 20px;  
+            display: flex;
+            gap: 8px;  
+            justify-content: center;  
+        }
+        .photo-controls button {
+            padding: 6px 12px; 
+            cursor: pointer;
+            font-size: 13px;  
+            background-color: #E0F2F1;  
+            color: #1B5E20;  
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.2s ease, transform 0.15s ease;
+        }
+        .photo-controls button:hover {
+            background-color: #A5D6A7; 
+        }
+        .photo-controls button:active {
+            background-color: #81C784; 
+            transform: scale(0.98);
+        }
+
+        /* Export Button Styles */
+        .export-button {
+            position: fixed;
+            top: 65px; /* Adjust based on size-adjustment height */
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(255, 255, 255, 0.95);  
+            padding: 8px;  
+            border-radius: 8px;  
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);  
+            z-index: 950; /* Between size-adjustment and notification-bar */
+            width: 90%;  
+            max-width: 600px;  
+            backdrop-filter: blur(5px);  
+            text-align: center;
+        }
+        .export-button button {
+            width: 100%; /* Make the button full width */
+            padding: 8px 0;  
+            cursor: pointer;
+            font-size: 14px;  
+            background-color: #FFE0B2;  
+            color: #E65100;  
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.2s ease, transform 0.15s ease;
+        }
+        .export-button button:hover {
+            background-color: #FFAB91;  
+        }
+        .export-button button:active {
+            background-color: #FF8A65;  
+            transform: scale(0.98);
+        }
+
+        .slate {
+            margin-bottom: 30px;  
+        }
+        .slate-header {
+            display: flex;
+            align-items: center;
+            justify-content: center; 
+            gap: 15px; 
+            margin-bottom: 5px; 
+            position: relative;
+        }
+        .slate-header h2 {
+            border-bottom: 2px solid #cccccc;
+            padding-bottom: 8px;  
+            color: #333333;
+            font-size: 22px;  
+            margin: 0; 
+            text-align: center; 
+        }
+        .slate-controls {
+            display: flex;
+            gap: 10px; 
+        }
+        .slate-controls button {
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 13px;
+            background-color: #90CAF9; 
+            color: #0D47A1; 
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.2s ease, transform 0.15s ease;
+        }
+        .slate-controls button:hover {
+            background-color: #64B5F6;
+        }
+        .slate-controls button:active {
+            background-color: #42A5F5;
+            transform: scale(0.98);
+        }
+
+        .slate-underline {
+            border: none;
+            border-bottom: 1px solid #cccccc;
+            margin: 0 auto;
+            width: 100%;
+            max-width: 700px; 
+        }
+
+        .images {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;  
+            justify-content: center;
+        }
+        .image-container {
+            background-color: #ffffff;
+            padding: 8px;  
+            border-radius: 6px;  
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);  
+            position: relative;
+            transition: transform 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex-shrink: 0;  
+            width: auto;  
+        }
+        .image-container:hover {
+            transform: translateY(-3px);  
+        }
+        .image-container img {
+            width: var(--image-width);  
+            max-width: none;  
+            height: auto;
+            display: block;
+            border-radius: 4px;
+            background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 50%, #f5f5f5 100%);
+            background-size: 200% 200%;
+            animation: shimmer 2s ease-in-out infinite;
+            transition: width 0.3s ease, opacity 0.3s ease;
+            cursor: pointer;
+            min-height: 100px; /* Prevent layout shift */
+        }
+        
+        @keyframes shimmer {
+            0% { background-position: 0% 0%; }
+            50% { background-position: 100% 100%; }
+            100% { background-position: 0% 0%; }
+        }
+        
+        /* Loading state for images */
+        .image-container img.loading {
+            opacity: 0.5;
+            filter: blur(5px);
+        }
+        
+        /* Loaded state for images */
+        .image-container img.loaded {
+            opacity: 1;
+            filter: none;
+            background: none;
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { 
+                opacity: 0.5;
+                filter: blur(5px);
+            }
+            to { 
+                opacity: 1;
+                filter: none;
+            }
+        }
+        .image-info {
+            margin-top: 8px;  
+            font-size: 12px; 
+            color: #555555;
+            text-align: left;
+            width: 100%;
+        }
+        .select-checkbox {
+            position: absolute;
+            top: 8px;  
+            left: 8px;  
+            transform: scale(1.3);  
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 2px;
+            border-radius: 3px;
+        }
+        .image-container.selected {
+            border: 2px solid #0D47A1;  
+        }
+
+        .enlarge-button {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            background-color: rgba(0, 0, 0, 0.6);
+            border: none;
+            border-radius: 50%;
+            padding: 5px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s ease;
+        }
+
+        .enlarge-button:hover {
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+
+        .enlarge-button svg {
+            width: 16px;
+            height: 16px;
+            fill: #ffffff;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none; 
+            position: fixed;
+            z-index: 2000; 
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Prevent scrolling within the modal */
+            background-color: rgba(0,0,0,0.8); 
+            flex-direction: column; /* Stack image and caption vertically */
+            align-items: center;
+            justify-content: center;
+            padding: 10px; /* Reduced padding to maximize space */
+            box-sizing: border-box;
+        }
+
+        .modal.show {
+            display: flex; 
+        }
+
+        .modal-image-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            max-width: 90vw; /* Increased from 70vw */
+            max-height: 90vh; /* Increased from 70vh */
+            padding: 10px; /* Padding to prevent edge clipping */
+            box-sizing: border-box; /* Ensure padding is included in sizing */
+        }
+
+        .modal-content {
+            max-width: 100%; 
+            max-height: 100%; 
+            width: auto;
+            height: auto;
+            object-fit: contain; /* Ensures the image fits within the container */
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            display: block; /* Ensure the image is a block element */
+        }
+
+        /* Modal Checkbox Styles */
+        .modal-checkbox {
+            position: absolute;
+            top: 10px; 
+            left: 10px; 
+            transform: scale(1.5);
+            accent-color: #0D47A1; 
+            z-index: 2100; 
+            cursor: pointer;
+        }
+
+        .modal-caption {
+            margin: 8px auto; /* Reduced from 15px */
+            text-align: center;
+            color: #f1f1f1;
+            font-size: 14px; /* Reduced from 16px */
+            max-width: 90%; /* Increased from 60% */
+            padding: 0 10px; /* Reduced padding */
+            z-index: 2150; 
+            margin-left: 0; /* Removed margin-left */
+            line-height: 1.6; /* Added line-height for better readability */
+        }
+
+        .modal-caption strong {
+            font-size: 16px;
+            color: #fff;
+        }
+
+        .close-button {
+            position: absolute;
+            top: 20px;
+            right: 35px;
+            color: #f1f1f1;
+            font-size: 40px;
+            font-weight: bold;
+            transition: color 0.3s ease;
+            cursor: pointer;
+            z-index: 2100;
+        }
+
+        .close-button:hover,
+        .close-button:focus {
+            color: #bbb;
+            text-decoration: none;
+        }
+
+        .prev-button,
+        .next-button {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #f1f1f1;
+            font-size: 40px;
+            font-weight: bold;
+            padding: 10px;
+            cursor: pointer;
+            user-select: none;
+            transition: color 0.3s ease;
+            z-index: 2100; 
+        }
+
+        .prev-button {
+            left: 5px; 
+        }
+
+        .next-button {
+            right: 5px; 
+        }
+
+        .prev-button:hover,
+        .next-button:hover {
+            color: #bbb;
+        }
+
+        /* Removed media queries since it's only for big screens */
+
+    </style>
+</head>
+<body>
+    <div class="notification-bar" id="notification-bar"></div>
+
+    <div class="size-adjustment" id="size-adjustment">
+        <label for="size-slider">Size:</label>
+        <input type="range" id="size-slider" min="100" max="600" value="160">
+        <span id="size-value">160px</span>
+    </div>
+
+    <div class="export-button">
+        <button type="button" id="export-to-clipboard" aria-label="Export to Clipboard">Export to Clipboard</button>
+    </div>
+
+    <h1>Slate Photography Gallery</h1>
+
+    <div class="filters">
+        <div class="filter-group" id="orientation-filters">
+            <label>Orientation:</label>
+            <label><input type="checkbox" class="orientation-filter" value="portrait" aria-label="Portrait"> Portrait</label>
+            <label><input type="checkbox" class="orientation-filter" value="landscape" aria-label="Landscape"> Landscape</label>
+        </div>
+
+        <div class="filter-group" id="focal-length-filters">
+            <label>Focal Length:</label>
+            <div class="focal-length-options">  
+                {% for focal in focal_lengths %}
+                    <label><input type="checkbox" class="focal-length-filter" value="{{ focal.value }}" aria-label="{{ focal.value }}mm"> {{ focal.value }}mm ({{ focal.count }} photos)</label>
+                {% endfor %}
+            </div>
+            <div class="button-group">
+                <button type="button" id="select-all-focal-length" aria-label="Select All Focal Lengths">Select All</button>
+                <button type="button" id="deselect-all-focal-length" aria-label="Deselect All Focal Lengths">Deselect All</button>
+            </div>
+        </div>
+
+        <div class="filter-group" id="date-filters">
+            <label>Date Taken:</label>
+            <div class="date-options">  
+                {% for date in dates %}
+                    <label><input type="checkbox" class="date-filter" value="{{ date.value }}" aria-label="{{ date.display_date }}"> {{ date.display_date }} ({{ date.count }} photos)</label>
+                {% endfor %}
+            </div>
+            <div class="button-group">
+                <button type="button" id="select-all-date" aria-label="Select All Dates">Select All</button>
+                <button type="button" id="deselect-all-date" aria-label="Deselect All Dates">Deselect All</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="photo-controls">
+        <!-- Updated button text and aria-label -->
+        <button type="button" id="select-all-photos" aria-label="Select all visible Photos">Select all visible Photos</button>
+        <button type="button" id="deselect-all-photos" aria-label="Deselect All Photos">Deselect All Photos</button>
+    </div>
+
+    {% for slate in gallery %}
+        <div class="slate">
+            <div class="slate-header">
+                <h2>{{ slate.slate }}</h2>
+                <div class="slate-controls">
+                    <button type="button" class="select-all-slate" aria-label="Select all photos in {{ slate.slate }}">Select All Photos in Slate</button>
+                    <button type="button" class="deselect-all-slate" aria-label="Deselect all photos in {{ slate.slate }}">Deselect All Photos in Slate</button>
+                </div>
+            </div>
+            <hr class="slate-underline">
+            
+            <div class="images">
+                {% for image in slate.images %}
+                    <div class="image-container"
+                         data-orientation="{{ image.orientation }}"
+                         data-focal-length="{{ image.focal_length }}"
+                         data-date="{{ image.date_taken }}"
+                         data-full-image="{{ image.original_path }}">
+                        <input type="checkbox" class="select-checkbox" aria-label="Select {{ image.filename }}">
+                        <!-- Using single optimized thumbnail {% if lazy_loading %}with lazy loading{% endif %} for optimal performance -->
+                        <img src="{{ image.thumbnail | default(image.original_path) }}" 
+                             data-src-full="{{ image.original_path }}"
+                             {% if lazy_loading %}loading="lazy"{% endif %} 
+                             decoding="async" 
+                             alt="Photo of {{ image.filename }}">
+                        <button class="enlarge-button" aria-label="Enlarge {{ image.filename }}">
+                            <!-- SVG Magnifying Glass Icon -->
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#ffffff" viewBox="0 0 24 24">
+                                <path d="M10 2a8 8 0 105.293 14.707l4.647 4.646a1 1 0 001.414-1.414l-4.646-4.647A8 8 0 0010 2zm0 2a6 6 0 110 12A6 6 0 0110 4z"/>
+                            </svg>
+                        </button>
+                        <div class="image-info">
+                            <strong>{{ image.filename }}</strong><br>
+                            Focal Length: {{ image.focal_length }}mm
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endfor %}
+
+    <div id="image-modal" class="modal" aria-modal="true" role="dialog" tabindex="-1">
+        <span class="close-button" aria-label="Close" tabindex="0">&times;</span>
+        <span class="prev-button" aria-label="Previous Image" tabindex="0">&#10094;</span>
+        <span class="next-button" aria-label="Next Image" tabindex="0">&#10095;</span>
+        
+        <div class="modal-image-container">
+            <img class="modal-content" id="modal-image" alt="Enlarged Photo">
+            <input type="checkbox" class="modal-checkbox" id="modal-select-checkbox" aria-label="Select Photo">
+        </div>
+        
+        <div id="modal-caption" class="modal-caption"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Notification Function
+            function showNotification(message, isError = false) {
+                const notificationBar = document.getElementById('notification-bar');
+                notificationBar.textContent = message;
+                notificationBar.classList.toggle('error', isError);
+                notificationBar.classList.add('show');
+                
+                setTimeout(() => {
+                    notificationBar.classList.remove('show');
+                }, 3000);  
+            }
+
+            // Function to filter images based on selected filters
+            function filterImages() {
+                var orientationCheckboxes = document.querySelectorAll('.orientation-filter');
+                var selectedOrientations = [];
+                orientationCheckboxes.forEach(cb => { if (cb.checked) selectedOrientations.push(cb.value); });
+
+                var focalLengthCheckboxes = document.querySelectorAll('.focal-length-filter');
+                var selectedFocalLengths = [];
+                focalLengthCheckboxes.forEach(cb => { if (cb.checked) selectedFocalLengths.push(cb.value); });
+
+                var dateCheckboxes = document.querySelectorAll('.date-filter');
+                var selectedDates = [];
+                dateCheckboxes.forEach(cb => { if (cb.checked) selectedDates.push(cb.value); });
+
+                var imageContainers = document.getElementsByClassName('image-container');
+
+                for (var img of imageContainers) {
+                    var imgOrientation = img.getAttribute('data-orientation');
+                    var imgFocalLength = img.getAttribute('data-focal-length');
+                    var imgDate = img.getAttribute('data-date');
+
+                    var orientationMatch = selectedOrientations.length === 0 || selectedOrientations.includes(imgOrientation);
+                    var focalMatch = selectedFocalLengths.length === 0 || selectedFocalLengths.includes(imgFocalLength.toString());
+                    
+                    // Date matching: extract YYYY-MM-DD from ISO date string and check if it matches any selected day
+                    var dateMatch = selectedDates.length === 0 || (imgDate && selectedDates.some(date => imgDate.startsWith(date)));
+
+                    img.style.display = (orientationMatch && focalMatch && dateMatch) ? 'flex' : 'none';
+                }
+
+                // If modal is open, refresh the visible images list
+                if (modal.classList.contains('show')) {
+                    allVisibleImages = getVisibleImages();
+                    if (allVisibleImages.length === 0) {
+                        closeModal();
+                    } else {
+                        displayImage(currentImageIndex);
+                    }
+                }
+            }
+
+            // Functions to select/deselect all checkboxes based on a filter class
+            function selectAllCheckboxes(filterClass) {
+                var checkboxes = document.querySelectorAll(filterClass);
+                checkboxes.forEach(cb => { cb.checked = true; });
+                filterImages();
+            }
+
+            function deselectAllCheckboxes(filterClass) {
+                var checkboxes = document.querySelectorAll(filterClass);
+                checkboxes.forEach(cb => { cb.checked = false; });
+                filterImages();
+            }
+
+            // Global Select All Photos - only select photos that are visible!
+            function selectAllPhotos() {
+                const imageContainers = document.querySelectorAll('.image-container');
+                imageContainers.forEach(container => {
+                    // Only select if container is visible
+                    if (container.style.display !== 'none') {
+                        const checkbox = container.querySelector('.select-checkbox');
+                        if (checkbox) {
+                            checkbox.checked = true;
+                            container.classList.add('selected');
+                        }
+                    }
+                });
+            }
+
+            // Global Deselect All Photos
+            function deselectAllPhotos() {
+                var checkboxes = document.querySelectorAll('.select-checkbox');
+                checkboxes.forEach(cb => {
+                    cb.checked = false;
+                    cb.parentElement.classList.remove('selected');
+                });
+            }
+
+            document.getElementById('select-all-photos').addEventListener('click', selectAllPhotos);
+            document.getElementById('deselect-all-photos').addEventListener('click', deselectAllPhotos);
+
+            var orientationCheckboxes = document.querySelectorAll('.orientation-filter');
+            orientationCheckboxes.forEach(function(checkbox) {
+                checkbox.addEventListener('change', filterImages);
+            });
+
+            var focalLengthCheckboxes = document.querySelectorAll('.focal-length-filter');
+            focalLengthCheckboxes.forEach(function(checkbox) {
+                checkbox.addEventListener('change', filterImages);
+            });
+
+            document.getElementById('select-all-focal-length').addEventListener('click', function() {
+                selectAllCheckboxes('.focal-length-filter');
+            });
+
+            document.getElementById('deselect-all-focal-length').addEventListener('click', function() {
+                deselectAllCheckboxes('.focal-length-filter');
+            });
+
+            var dateCheckboxes = document.querySelectorAll('.date-filter');
+            dateCheckboxes.forEach(function(checkbox) {
+                checkbox.addEventListener('change', filterImages);
+            });
+
+            document.getElementById('select-all-date').addEventListener('click', function() {
+                selectAllCheckboxes('.date-filter');
+            });
+
+            document.getElementById('deselect-all-date').addEventListener('click', function() {
+                deselectAllCheckboxes('.date-filter');
+            });
+
+            // Size slider functionality
+            var sizeSlider = document.getElementById('size-slider');
+            var sizeValue = document.getElementById('size-value');
+
+            sizeSlider.addEventListener('input', function() {
+                var size = sizeSlider.value + 'px';
+                sizeValue.textContent = size;
+                adjustImageSizes(size);
+            });
+
+            function adjustImageSizes(size) {
+                // Use CSS variable for more reliable sizing
+                document.documentElement.style.setProperty('--image-width', size);
+                // No need to switch thumbnail sources since we use a single optimized size
+            }
+
+            document.getElementById('export-to-clipboard').addEventListener('click', function() {
+                var imageContainers = document.getElementsByClassName('image-container');
+                var exportData = [];
+                var lastFolderPath = '';
+                var currentBasePath = '';
+
+                for (var container of imageContainers) {
+                    var checkbox = container.querySelector('.select-checkbox');
+                    if (checkbox && checkbox.checked) {
+                        var imgElement = container.querySelector('img');
+                        // Use original full path, not thumbnail
+                        var imgPath = imgElement.getAttribute('data-src-full') || container.getAttribute('data-full-image') || imgElement.getAttribute('src');
+                        var focalLength = container.getAttribute('data-focal-length');
+
+                        var focalLengthFormatted = parseFloat(focalLength);
+                        if (focalLengthFormatted % 1 === 0) {
+                            focalLengthFormatted = focalLengthFormatted.toFixed(0);
+                        }
+
+                        var lastSlashIndex = imgPath.lastIndexOf('/');
+                        var folderPath = imgPath.substring(0, lastSlashIndex);
+                        var filename = imgPath.substring(lastSlashIndex + 1);
+
+                        // Extract base path up to /slates/ for this image
+                        var imgBasePath = '';
+                        var slatesIndex = imgPath.indexOf('/slates/');
+                        if (slatesIndex !== -1) {
+                            imgBasePath = imgPath.substring(0, slatesIndex + 8); // +8 for '/slates/'
+                        }
+
+                        if (exportData.length === 0 || imgBasePath !== currentBasePath) {
+                            // First image OR different show/base path - output full path
+                            exportData.push(imgPath + '-' + focalLengthFormatted);
+                            currentBasePath = imgBasePath;
+                        } else {
+                            // Same base path - use relative format
+                            var relativePath = imgPath.substring(currentBasePath.length);
+                            
+                            // Check if it's the same folder as last time
+                            if (folderPath === lastFolderPath) {
+                                // Same folder - extract slate from relative path and output slate/subdirs/filename
+                                var slateMatch = relativePath.match(/^([A-Z][0-9]+[A-Z])\//);
+                                if (slateMatch) {
+                                    var slate = slateMatch[1];
+                                    var pathAfterSlate = relativePath.substring(slate.length + 1);
+                                    exportData.push(slate + '/' + pathAfterSlate + '-' + focalLengthFormatted);
+                                } else {
+                                    // Fallback to relative path if no slate found
+                                    exportData.push(relativePath + '-' + focalLengthFormatted);
+                                }
+                            } else {
+                                // Different folder - always include full relative path with slate
+                                exportData.push(relativePath + '-' + focalLengthFormatted);
+                            }
+                        }
+
+                        lastFolderPath = folderPath;
+                    }
+                }
+
+                if (exportData.length === 0) {
+                    showNotification('No images selected for export.', true);
+                    return;
+                }
+
+                var exportText = exportData.join('\n');
+
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(exportText).then(function() {
+                        showNotification('Data copied to clipboard');
+                    }, function(err) {
+                        showNotification('Failed to copy data: ' + err, true);
+                    });
+                } else {
+                    var textarea = document.createElement('textarea');
+                    textarea.value = exportText;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    try {
+                        document.execCommand('copy');
+                        showNotification('Data copied to clipboard');
+                    } catch (err) {
+                        showNotification('Failed to copy data: ' + err, true);
+                    }
+                    document.body.removeChild(textarea);
+                }
+            });
+
+            // Handle checkbox selection
+            var checkboxes = document.querySelectorAll('.select-checkbox');
+            checkboxes.forEach(function(checkbox) {
+                checkbox.addEventListener('change', function() {
+                    if (this.checked) {
+                        this.parentElement.classList.add('selected');
+                    } else {
+                        this.parentElement.classList.remove('selected');
+                    }
+                    // Update modal checkbox if modal is open and this image is currently displayed
+                    if (modal.classList.contains('show')) {
+                        if (allVisibleImages[currentImageIndex] === this.parentElement.querySelector('img')) {
+                            modalSelectCheckbox.checked = this.checked;
+                        }
+                    }
+                });
+            });
+
+            // Toggle checkbox when image is clicked
+            var images = document.querySelectorAll('.image-container img');
+            images.forEach(function(img) {
+                img.addEventListener('click', function() {
+                    var checkbox = this.parentElement.querySelector('.select-checkbox');
+                    if (checkbox) {
+                        checkbox.checked = !checkbox.checked;
+                        checkbox.dispatchEvent(new Event('change'));
+                    }
+                });
+            });
+
+            // Modal Elements
+            const modal = document.getElementById('image-modal');
+            const modalImg = document.getElementById('modal-image');
+            const modalCaption = document.getElementById('modal-caption');
+            const closeButton = document.querySelector('.close-button');
+            const prevButton = document.querySelector('.prev-button');
+            const nextButton = document.querySelector('.next-button');
+            const modalSelectCheckbox = document.querySelector('.modal-checkbox');
+
+            let allVisibleImages = [];
+            let currentImageIndex = 0;
+            let lastFocusedElement = null; // To store the element that triggered the modal
+
+            // Function to get all currently visible images
+            function getVisibleImages() {
+                return Array.from(document.querySelectorAll('.image-container img'))
+                            .filter(img => img.parentElement.style.display !== 'none');
+            }
+
+            function openModal(event) {
+                // Prevent the click event from propagating to the modal background
+                event.stopPropagation();
+
+                allVisibleImages = getVisibleImages();
+                if (allVisibleImages.length === 0) {
+                    showNotification('No images available to display in modal.', true);
+                    return;
+                }
+
+                // Store the last focused element
+                lastFocusedElement = document.activeElement;
+
+                // Get the image element from the parent container
+                const imageContainer = event.currentTarget.closest('.image-container');
+                const image = imageContainer.querySelector('img');
+
+                currentImageIndex = allVisibleImages.indexOf(image);
+
+                // If the image is not found, default to the first image
+                if (currentImageIndex === -1) {
+                    currentImageIndex = 0;
+                }
+
+                displayImage(currentImageIndex);
+                modal.classList.add('show');
+                document.body.style.overflow = 'hidden';
+                modal.setAttribute('tabindex', '-1');
+                modal.focus(); // Set focus to the modal
+            }
+
+            function displayImage(index) {
+                allVisibleImages = getVisibleImages(); // Refresh the list in case filters have changed
+                if (allVisibleImages.length === 0) {
+                    closeModal();
+                    return;
+                }
+
+                if (index < 0) {
+                    currentImageIndex = allVisibleImages.length - 1; // Loop to last image
+                } else if (index >= allVisibleImages.length) {
+                    currentImageIndex = 0; // Loop to first image
+                } else {
+                    currentImageIndex = index;
+                }
+
+                const image = allVisibleImages[currentImageIndex];
+                if (!image) {
+                    showNotification('Image not found.', true);
+                    return;
+                }
+
+                const imageContainer = image.parentElement;
+                // Use full-size image for modal, fallback to current src
+                const fullSrc = image.getAttribute('data-src-full') || imageContainer.getAttribute('data-full-image') || image.getAttribute('src');
+                const imgAlt = image.getAttribute('alt');
+
+                // Retrieve metadata
+                const filename = imageContainer.querySelector('.image-info strong').textContent;
+                const focalLength = imageContainer.getAttribute('data-focal-length');
+
+                // Build metadata HTML
+                let metadataHTML = `<strong>${filename}</strong>`;
+                metadataHTML += focalLength ? `<br>Focal Length: ${focalLength}mm` : '';
+
+                modalImg.src = fullSrc;
+                modalImg.alt = imgAlt;
+                modalCaption.innerHTML = metadataHTML;
+
+                const galleryCheckbox = imageContainer.querySelector('.select-checkbox');
+                modalSelectCheckbox.checked = galleryCheckbox.checked;
+            }
+
+            function closeModal() {
+                modal.classList.remove('show'); 
+                document.body.style.overflow = 'auto'; 
+                // Return focus to the last focused element
+                if (lastFocusedElement) {
+                    lastFocusedElement.focus();
+                }
+            }
+
+            function showPrevImage() {
+                displayImage(currentImageIndex - 1);
+            }
+
+            function showNextImage() {
+                displayImage(currentImageIndex + 1);
+            }
+
+            // Attach event listeners to enlarge buttons
+            const enlargeButtons = document.querySelectorAll('.enlarge-button');
+            enlargeButtons.forEach(function(button) {
+                button.addEventListener('click', openModal);
+            });
+
+            closeButton.addEventListener('click', closeModal);
+
+            prevButton.addEventListener('click', showPrevImage);
+            nextButton.addEventListener('click', showNextImage);
+
+            // Close modal when clicking outside the image
+            modal.addEventListener('click', function(event) {
+                if (event.target === modal) {
+                    closeModal();
+                }
+            });
+
+            // Keyboard navigation
+            document.addEventListener('keydown', function(event) {
+                if (modal.classList.contains('show')) {
+                    if (event.key === 'ArrowLeft') {
+                        showPrevImage();
+                    } else if (event.key === 'ArrowRight') {
+                        showNextImage();
+                    } else if (event.key === 'Escape') {
+                        closeModal();
+                    }
+                }
+            });
+
+            // Select/Deselect all within a slate
+            function selectAllInSlate(slateElement) {
+                var checkboxes = slateElement.querySelectorAll('.select-checkbox');
+                checkboxes.forEach(function(checkbox) {
+                    checkbox.checked = true;
+                    checkbox.parentElement.classList.add('selected');
+                });
+            }
+
+            function deselectAllInSlate(slateElement) {
+                var checkboxes = slateElement.querySelectorAll('.select-checkbox');
+                checkboxes.forEach(function(checkbox) {
+                    checkbox.checked = false;
+                    checkbox.parentElement.classList.remove('selected');
+                });
+            }
+
+            var selectAllSlateButtons = document.querySelectorAll('.select-all-slate');
+            selectAllSlateButtons.forEach(function(button) {
+                button.addEventListener('click', function() {
+                    var slateDiv = this.closest('.slate');
+                    selectAllInSlate(slateDiv);
+                });
+            });
+
+            var deselectAllSlateButtons = document.querySelectorAll('.deselect-all-slate');
+            deselectAllSlateButtons.forEach(function(button) {
+                button.addEventListener('click', function() {
+                    var slateDiv = this.closest('.slate');
+                    deselectAllInSlate(slateDiv);
+                });
+            });
+
+            // Handle modal checkbox changes
+            modalSelectCheckbox.addEventListener('change', function() {
+                if (allVisibleImages.length === 0) return;
+
+                const image = allVisibleImages[currentImageIndex];
+                const imageContainer = image.parentElement;
+                const galleryCheckbox = imageContainer.querySelector('.select-checkbox');
+                if (galleryCheckbox) {
+                    galleryCheckbox.checked = this.checked;
+                    if (this.checked) {
+                        imageContainer.classList.add('selected');
+                    } else {
+                        imageContainer.classList.remove('selected');
+                    }
+                }
+            });
+
+            // Initialize the gallery
+            function initializeGallery() {
+                filterImages();
+                adjustImageSizes(sizeSlider.value + 'px');
+                // Images use lazy loading for better performance
+            }
+
+            initializeGallery();
+
+            // Setup Intersection Observer for progressive image loading
+            {% if lazy_loading %}
+            if ('IntersectionObserver' in window) {
+                const imageObserver = new IntersectionObserver((entries, observer) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            const img = entry.target;
+                            // Only add loading state if image isn't already loaded
+                            if (!img.complete && !img.classList.contains('loaded')) {
+                                img.classList.add('loading');
+                                img.onload = () => {
+                                    img.classList.remove('loading');
+                                    img.classList.add('loaded');
+                                };
+                                img.onerror = () => {
+                                    img.classList.remove('loading');
+                                    // Don't add 'loaded' on error to maintain loading shimmer
+                                };
+                            } else if (img.complete && !img.classList.contains('loaded')) {
+                                // Image was already cached/loaded
+                                img.classList.add('loaded');
+                            }
+                        }
+                    });
+                }, {
+                    // Start loading when image is 200px away from viewport
+                    rootMargin: '200px',
+                    threshold: 0.01
+                });
+
+                // Observe all lazy-load images
+                document.querySelectorAll('img[loading="lazy"]').forEach(img => {
+                    // Set initial state for images already in cache
+                    if (img.complete) {
+                        img.classList.add('loaded');
+                    } else {
+                        // Ensure load handler is set for images not yet loaded
+                        img.onload = () => {
+                            img.classList.remove('loading');
+                            img.classList.add('loaded');
+                        };
+                        img.onerror = () => {
+                            img.classList.remove('loading');
+                        };
+                    }
+                    imageObserver.observe(img);
+                });
+            }
+            {% else %}
+            // When lazy loading is disabled, all images load immediately
+            // Just set loaded class for all images once they're loaded
+            document.querySelectorAll('.images img').forEach(img => {
+                if (img.complete) {
+                    img.classList.add('loaded');
+                } else {
+                    img.onload = () => {
+                        img.classList.add('loaded');
+                    };
+                }
+            });
+            {% endif %}
+
+            // Adjust modal image container size on window resize
+            window.addEventListener('resize', function() {
+                if (modal.classList.contains('show')) {
+                    displayImage(currentImageIndex);
+                }
+            });
+
+            // Accessibility: Allow closing modal with Enter key on close button
+            closeButton.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    closeModal();
+                }
+            });
+
+            // Accessibility: Allow navigating prev/next buttons with Enter key
+            prevButton.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    showPrevImage();
+                }
+            });
+
+            nextButton.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    showNextImage();
+                }
+            });
+        });
+    </script>
+
+</body>
+</html>
+

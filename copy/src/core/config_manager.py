@@ -21,13 +21,13 @@ if not os.path.isdir(CACHE_DIR):
 
 
 @log_function
-def load_config() -> tuple[str, list[str], bool, int, bool]:
+def load_config():
     config = configparser.ConfigParser()
-    slate_dirs: list[str] = []
-    current_slate_dir: str = ""
-    generate_thumbnails: bool = False  # Default to original behavior
-    thumbnail_size: int = 600  # Default thumbnail size
-    lazy_loading: bool = True  # Default to lazy loading enabled
+    slate_dirs = []
+    current_slate_dir = ""
+    generate_thumbnails = False  # Default to original behavior
+    thumbnail_size = 600  # Default thumbnail size
+    lazy_loading = True  # Default to lazy loading enabled
     if os.path.exists(CONFIG_FILE):
         try:
             with codecs.open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -91,13 +91,7 @@ def load_config() -> tuple[str, list[str], bool, int, bool]:
 
 
 @log_function
-def save_config(
-    current_slate_dir: str,
-    slate_dirs: list[str],
-    generate_thumbnails: bool = False,
-    thumbnail_size: int = 600,
-    lazy_loading: bool = True
-) -> None:
+def save_config(current_slate_dir, slate_dirs, generate_thumbnails=False, thumbnail_size=600, lazy_loading=True):
     config = configparser.ConfigParser()
     if not config.has_section("Settings"):
         config.add_section("Settings")

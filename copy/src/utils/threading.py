@@ -3,56 +3,49 @@
 import multiprocessing
 import os
 import threading
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Any, Optional
 
 from PySide6 import QtCore
 from PySide6.QtCore import Signal
 
 from .logging_config import log_function, logger
 
-# Type aliases for better documentation (TypedDict imports cause circular dependencies)
-# These match the TypedDict definitions in core.gallery_generator
-ImageData = dict[str, Any]
-FocalLengthData = dict[str, Any]  # Structure: {"value": float, "count": int}
-DateData = dict[str, Any]  # Structure: {"value": str, "count": int, "display_date": str}
-
 # ----------------------------- Worker Threads -----------------------------
 
 
 class ScanThread(QtCore.QThread):
-    scan_complete: Signal = Signal(dict, str)  # type: ignore[misc]
-    progress: Signal = Signal(int)  # type: ignore[misc]
+    scan_complete = Signal(dict, str)
+    progress = Signal(int)
 
-    def __init__(self, root_dir: str, cache_manager: Any) -> None:
+    def __init__(self, root_dir, cache_manager):
         super().__init__()
-        self.root_dir: str = str(root_dir)
-        self.cache_manager: Any = cache_manager
+        self.root_dir = str(root_dir)
+        self.cache_manager = cache_manager
 
     @log_function
-    def run(self) -> None:  # type: ignore[override]
+    def run(self):
         try:
             # Import here to avoid circular imports
             from core.image_processor import scan_directories
 
             logger.info("Starting directory scan...")
-            slates: dict[str, Any] = scan_directories(self.root_dir)
+            slates = scan_directories(self.root_dir)
 
-            processed_slates: int = 0
-            total_slates: int = len(slates)
+            processed_slates = 0
+            total_slates = len(slates)
             logger.debug(f"Total slates to process: {total_slates}")
 
             for _slate, data in slates.items():
-                image_paths: list[dict[str, Any]] = data["images"]
-                processed_images: list[dict[str, Any]] = self.cache_manager.process_images_batch(
+                image_paths = data["images"]
+                processed_images = self.cache_manager.process_images_batch(
                     image_paths, callback=lambda p: self.progress.emit(int(p))
                 )
                 data["images"] = processed_images
 
                 processed_slates += 1
                 if total_slates > 0:
-                    progress: float = (processed_slates / float(total_slates)) * 100
+                    progress = (processed_slates / float(total_slates)) * 100
                 else:
                     progress = 100
                 self.progress.emit(int(progress))
@@ -64,71 +57,61 @@ class ScanThread(QtCore.QThread):
             self.scan_complete.emit(slates, "Scan complete.")
             logger.info("Scan completed.")
         except Exception as e:
-            error_message: str = f"Error during directory scan: {e}"
+            error_message = f"Error during directory scan: {e}"
             logger.error(error_message, exc_info=True)
             self.scan_complete.emit({}, error_message)
 
 
 class GenerateGalleryThread(QtCore.QThread):
-    gallery_complete: Signal = Signal(bool, str)  # type: ignore[misc]
-    progress: Signal = Signal(int)  # type: ignore[misc]
+    gallery_complete = Signal(bool, str)
+    progress = Signal(int)
 
     def __init__(
-        self,
-        selected_slates: list[str],
-        slates_dict: dict[str, Any],
-        cache_manager: Any,
-        output_dir: str,
-        root_dir: str,
-        template_path: str,
-        generate_thumbnails: bool,
-        thumbnail_size: int = 600,
-        lazy_loading: bool = True
-    ) -> None:
+        self, selected_slates, slates_dict, cache_manager, output_dir, root_dir, template_path, generate_thumbnails, thumbnail_size=600, lazy_loading=True
+    ):
         super().__init__()
-        self.selected_slates: list[str] = selected_slates
-        self.slates_dict: dict[str, Any] = slates_dict
-        self.cache_manager: Any = cache_manager
-        self.output_dir: str = output_dir
-        self.root_dir: str = root_dir
-        self.template_path: str = template_path
-        self.generate_thumbnails: bool = generate_thumbnails
-        self.thumbnail_size: int = thumbnail_size
-        self.lazy_loading: bool = lazy_loading
+        self.selected_slates = selected_slates
+        self.slates_dict = slates_dict
+        self.cache_manager = cache_manager
+        self.output_dir = output_dir
+        self.root_dir = root_dir
+        self.template_path = template_path
+        self.generate_thumbnails = generate_thumbnails
+        self.thumbnail_size = thumbnail_size
+        self.lazy_loading = lazy_loading
 
         # Lock for thread-safe operations
-        self.focal_length_lock: threading.Lock = threading.Lock()
-        self.focal_length_counts: dict[float, int] = {}
+        self.focal_length_lock = threading.Lock()
+        self.focal_length_counts = {}
 
         # Date-related data structures
-        self.date_lock: threading.Lock = threading.Lock()
-        self.date_counts: dict[str, int] = {}  # Format: "YYYY-MM-DD": count
+        self.date_lock = threading.Lock()
+        self.date_counts = {}  # Format: "YYYY-MM-DD": count
 
         # Thumbnail directory
-        self.thumb_dir: str = os.path.join(output_dir, "thumbnails")
+        self.thumb_dir = os.path.join(output_dir, "thumbnails")
 
         # Thread pool for parallel image processing
         # For I/O-bound operations (reading files, EXIF extraction), we can use more workers
         # Use 2x CPU count for I/O operations, capped at 16 to avoid overwhelming the system
-        self.max_workers: int = min(multiprocessing.cpu_count() * 2, 16)
+        self.max_workers = min(multiprocessing.cpu_count() * 2, 16)
         logger.info(f"Using {self.max_workers} workers for parallel image processing")
 
-    def run(self) -> None:  # type: ignore[override]
+    def run(self):
         try:
             logger.info("Generating Gallery...")
             self.progress.emit(0)
 
-            gallery_slates: list[dict[str, Any]] = []
-            total_slates: int = len(self.selected_slates)
-            processed_slates: int = 0
+            gallery_slates = []
+            total_slates = len(self.selected_slates)
+            processed_slates = 0
             logger.info(f"Total slates selected: {total_slates}")
 
             for slate in self.selected_slates:
-                images: list[dict[str, Any]] = self.slates_dict.get(slate, {}).get("images", [])
+                images = self.slates_dict.get(slate, {}).get("images", [])
 
                 # Always use parallel processing for better performance
                 # Even without thumbnails, we still need to extract EXIF data in parallel
-                slate_images: list[ImageData]
                 if len(images) > 1:
                     slate_images = self.process_images_parallel(images)
                 else:
@@ -139,7 +122,7 @@ class GenerateGalleryThread(QtCore.QThread):
                         if os.path.basename(image["path"]).startswith("._"):
                             logger.debug(f"Skipping macOS resource fork file: {image['path']}")
                             continue
-                        image_data: Optional[ImageData] = self.process_image(image["path"])
+                        image_data = self.process_image(image["path"])
                         if image_data is not None:
                             slate_images.append(image_data)
 
@@ -147,7 +130,6 @@ class GenerateGalleryThread(QtCore.QThread):
                     gallery_slates.append({"slate": slate, "images": slate_images})
 
                 processed_slates += 1
-                progress: float
                 if total_slates > 0:
                     progress = (processed_slates / float(total_slates)) * 80
                 else:
@@ -160,21 +142,21 @@ class GenerateGalleryThread(QtCore.QThread):
             from core.gallery_generator import generate_html_gallery
 
             # Convert focal length counts to structured data sorted by focal length value
-            focal_length_data: list[FocalLengthData] = [
+            focal_length_data = [
                 {"value": focal_length, "count": count}
                 for focal_length, count in sorted(self.focal_length_counts.items())
             ]
 
             # Convert date counts to structured data sorted by date
-            date_data: list[DateData] = [
+            date_data = [
                 {"value": date_key, "count": count, "display_date": self._format_date_for_display(date_key)}
                 for date_key, count in sorted(self.date_counts.items())
             ]
 
-            success: bool = generate_html_gallery(
-                gallery_slates,  # pyright: ignore[reportArgumentType]
-                focal_length_data,  # pyright: ignore[reportArgumentType]
-                date_data,  # pyright: ignore[reportArgumentType]
+            success = generate_html_gallery(
+                gallery_slates,
+                focal_length_data,
+                date_data,
                 self.template_path,
                 self.output_dir,
                 self.root_dir,
@@ -182,7 +164,7 @@ class GenerateGalleryThread(QtCore.QThread):
                 self.lazy_loading,
             )
             if success:
-                message: str = "Gallery generated."
+                message = "Gallery generated."
                 self.progress.emit(100)
                 logger.info(message)
                 self.gallery_complete.emit(True, message)
@@ -192,19 +174,19 @@ class GenerateGalleryThread(QtCore.QThread):
                 self.gallery_complete.emit(False, message)
 
         except Exception as e:
-            error_message: str = f"Error during gallery generation: {e}"
+            error_message = f"Error during gallery generation: {e}"
             logger.error(error_message, exc_info=True)
             self.gallery_complete.emit(False, error_message)
 
-    def process_images_parallel(self, images: list[dict[str, Any]]) -> list[ImageData]:
+    def process_images_parallel(self, images):
         """Process multiple images in parallel using ThreadPoolExecutor."""
         import time
-        start_time: float = time.perf_counter()
+        start_time = time.perf_counter()
 
-        results: list[ImageData] = []
+        results = []
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all image processing tasks (skip macOS resource fork files)
-            future_to_image: dict[Future[Optional[ImageData]], str] = {
+            future_to_image = {
                 executor.submit(self.process_image, img["path"]): img["path"]
                 for img in images
                 if not os.path.basename(img["path"]).startswith("._")
@@ -213,24 +195,24 @@ class GenerateGalleryThread(QtCore.QThread):
             # Collect results as they complete
             for future in as_completed(future_to_image):
                 try:
-                    image_data: Optional[ImageData] = future.result()
+                    image_data = future.result()
                     if image_data is not None:
                         results.append(image_data)
                 except Exception as e:
-                    image_path: str = future_to_image[future]
+                    image_path = future_to_image[future]
                     logger.error(f"Error processing image {image_path} in parallel: {e}")
 
         # Sort results to maintain original order
         results.sort(key=lambda x: x.get("filename", ""))
 
         # Log performance metrics
-        elapsed_time: float = time.perf_counter() - start_time
-        images_per_second: float = len(results) / elapsed_time if elapsed_time > 0 else 0
+        elapsed_time = time.perf_counter() - start_time
+        images_per_second = len(results) / elapsed_time if elapsed_time > 0 else 0
         logger.info(f"Processed {len(results)} images in {elapsed_time:.2f}s ({images_per_second:.1f} images/sec) using {self.max_workers} workers")
 
         return results
 
-    def process_image(self, image_path: str) -> Optional[ImageData]:
+    def process_image(self, image_path):
         try:
             # Skip macOS resource fork files (._*)
             if os.path.basename(image_path).startswith("._"):
@@ -238,16 +220,11 @@ class GenerateGalleryThread(QtCore.QThread):
                 return None
 
             # Import here to avoid circular imports
-            from core.image_processor import (
-                generate_thumbnail,
-                get_exif_data,
-                get_image_date,
-                get_orientation,
-            )
+            from core.image_processor import generate_thumbnail, get_exif_data, get_image_date, get_orientation
 
-            exif: dict[str, Any] = get_exif_data(image_path)
-            focal_length: Any = exif.get("FocalLength", None)
-            focal_length_value: Optional[float] = None
+            exif = get_exif_data(image_path)
+            focal_length = exif.get("FocalLength", None)
+            focal_length_value = None
 
             if focal_length:
                 if isinstance(focal_length, tuple):
@@ -261,13 +238,13 @@ class GenerateGalleryThread(QtCore.QThread):
                     except Exception as e:
                         logger.warning(f"Invalid focal length value for {image_path}: {e}")
 
-            orientation: str = get_orientation(image_path, exif)
-            filename: str = os.path.basename(image_path)
+            orientation = get_orientation(image_path, exif)
+            filename = os.path.basename(image_path)
 
             # Extract date information
-            image_date: Optional[datetime] = get_image_date(exif)
-            date_taken: Optional[str] = None
-            date_key: Optional[str] = None
+            image_date = get_image_date(exif)
+            date_taken = None
+            date_key = None
 
             if image_date:
                 date_taken = image_date.isoformat()  # ISO format for HTML data attribute
@@ -284,13 +261,13 @@ class GenerateGalleryThread(QtCore.QThread):
                     )
 
             # Generate thumbnails if enabled
-            thumbnails: dict[str, str] = {}
-            thumbnail_path: str = image_path  # Default to original
+            thumbnails = {}
+            thumbnail_path = image_path  # Default to original
             if self.generate_thumbnails:
                 thumbnails = generate_thumbnail(image_path, self.thumb_dir, size=self.thumbnail_size)
                 logger.debug(f"Generated {len(thumbnails)} thumbnails for {filename}")
                 # Get the single thumbnail path
-                size_key: str = f"{self.thumbnail_size}x{self.thumbnail_size}"
+                size_key = f"{self.thumbnail_size}x{self.thumbnail_size}"
                 thumbnail_path = thumbnails.get(size_key, image_path)
 
             return {
@@ -308,15 +285,15 @@ class GenerateGalleryThread(QtCore.QThread):
             logger.error(f"Error processing image {image_path}: {e}", exc_info=True)
             return None
 
-    def _format_date_for_display(self, date_key: str) -> str:
+    def _format_date_for_display(self, date_key):
         """Convert YYYY-MM-DD date key to DD/MM/YY display format."""
         try:
-            date_obj: datetime = datetime.strptime(date_key, "%Y-%m-%d")
+            date_obj = datetime.strptime(date_key, "%Y-%m-%d")
             return date_obj.strftime("%d/%m/%y")
         except ValueError as e:
             logger.warning(f"Failed to format date key '{date_key}': {e}")
             return date_key
 
-    def emit_status(self, message: str) -> None:
+    def emit_status(self, message):
         # Just log the status, don't emit completion signal
         logger.info(f"Gallery generation status: {message}")

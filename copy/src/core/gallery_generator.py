@@ -1,73 +1,17 @@
 """Gallery generation - extracted identically from original SlateGallery.py"""
 
 import os
-from collections.abc import Callable
-from typing import Optional, TypedDict
 
 from jinja2 import Environment, FileSystemLoader
-
 from utils.logging_config import log_function, logger
-
-
-# Type definitions for gallery data structures
-class _ImageDataRequired(TypedDict):
-    """Required fields for image data."""
-    original_path: str
-
-
-class _ImageDataOptional(TypedDict, total=False):
-    """Optional fields for image data."""
-    thumbnail: str
-    thumbnail_600: str
-    thumbnail_1200: str
-    thumbnails: dict[str, str]
-    focal_length: Optional[float]
-    orientation: int
-    filename: str
-    date_taken: Optional[str]
-    web_path: str  # Added during gallery generation
-
-
-class ImageData(_ImageDataRequired, _ImageDataOptional):
-    """Type definition for image data dictionary.
-
-    Required fields: original_path
-    Optional fields: thumbnail, thumbnails, focal_length, orientation, filename, date_taken, web_path
-    """
-
-
-class SlateData(TypedDict):
-    """Type definition for slate data dictionary."""
-    slate: str
-    images: list[ImageData]
-
-
-class FocalLengthData(TypedDict):
-    """Type definition for focal length data dictionary."""
-    value: float
-    count: int
-
-
-class DateData(TypedDict):
-    """Type definition for date data dictionary."""
-    value: str  # YYYY-MM-DD format
-    count: int
-    display_date: str  # DD/MM/YY format
 
 # ----------------------------- HTML Gallery Generation -----------------------------
 
 
 @log_function
 def generate_html_gallery(
-    gallery_data: list[SlateData],
-    focal_length_data: list[FocalLengthData],
-    date_data: list[DateData],
-    template_path: str,
-    output_dir: str,
-    root_dir: str,
-    status_callback: Callable[[str], None],
-    lazy_loading: bool = True,
-) -> bool:
+    gallery_data, focal_length_data, date_data, template_path, output_dir, root_dir, status_callback, lazy_loading=True
+):
     try:
         # Process image paths
         for slate in gallery_data:
@@ -117,7 +61,7 @@ def generate_html_gallery(
         try:
             html_file_path = os.path.join(output_dir, "index.html")
             with open(html_file_path, "wb") as f:
-                _ = f.write(output_html.encode("utf-8"))
+                f.write(output_html.encode("utf-8"))
             status_callback(f"Gallery generated at {os.path.abspath(html_file_path)}")
             logger.info(f"Gallery generated at {os.path.abspath(html_file_path)}")
             return True

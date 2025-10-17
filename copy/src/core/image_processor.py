@@ -7,14 +7,13 @@ from pathlib import Path
 
 from PIL import Image
 from PIL.ExifTags import IFD, TAGS
-
 from utils.logging_config import log_function, logger
 
 # ----------------------------- Helper Functions -----------------------------
 
 
 @log_function
-def get_exif_data(image_path: str) -> dict[str, object]:
+def get_exif_data(image_path):
     try:
         # Skip macOS resource fork files as a last line of defense
         if os.path.basename(image_path).startswith("._"):
@@ -59,7 +58,7 @@ def get_exif_data(image_path: str) -> dict[str, object]:
 
             # Fallback to deprecated _getexif() for compatibility
             if hasattr(image, "_getexif"):
-                exifinfo = image._getexif()  # pyright: ignore[reportAttributeAccessIssue]
+                exifinfo = image._getexif()  # type: ignore[attr-defined]
                 if exifinfo:
                     for tag, value in exifinfo.items():
                         decoded = TAGS.get(tag, tag)
@@ -101,7 +100,7 @@ def get_image_date(exif_data):
 
 
 @log_function
-def get_orientation(image_path: str, exif_data: dict[str, object]) -> str:
+def get_orientation(image_path, exif_data):
     if "Orientation" in exif_data:
         orientation = exif_data["Orientation"]
         if orientation in [6, 8]:
@@ -126,12 +125,12 @@ def get_orientation(image_path: str, exif_data: dict[str, object]) -> str:
 
 
 @log_function
-def scan_directories(root_dir: str) -> dict[str, dict[str, list[str]]]:
+def scan_directories(root_dir):
     # QString is no longer needed in PySide6, using native Python strings
     root_dir = str(root_dir)
 
     image_extensions = [".jpg", ".jpeg", ".png", ".tiff", ".bmp", ".gif"]
-    slates: dict[str, dict[str, list[str]]] = {}
+    slates = {}
 
     if not os.path.exists(root_dir):
         logger.error(f"Slate directory does not exist: {root_dir}")

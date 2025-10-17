@@ -4,12 +4,7 @@ import logging
 import logging.handlers
 import os
 import traceback
-from collections.abc import Callable
 from functools import wraps
-from typing import TypeVar
-
-# Use typing_extensions for ParamSpec (Python 3.9 compatibility)
-from typing_extensions import ParamSpec
 
 # ----------------------------- Logging Configuration -----------------------------
 
@@ -38,28 +33,17 @@ logger.addHandler(console_handler)
 
 # ----------------------------- Logging Decorator -----------------------------
 
-# Type variables for decorator that preserves function signatures
-P = ParamSpec('P')
-R = TypeVar('R')
 
-
-def log_function(func: Callable[P, R]) -> Callable[P, R]:
-    """Decorator to log function entry, exit, and exceptions.
-
-    Args:
-        func: The function to decorate. Can have any parameters and return type.
-
-    Returns:
-        A wrapped function with the same signature that logs entry, exit, and exceptions.
-    """
+def log_function(func):
+    """Decorator to log function entry, exit, and exceptions."""
 
     @wraps(func)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+    def wrapper(*args, **kwargs):
         logger.debug(f"Entering function: {func.__name__}")
         # Avoid logging arguments during intensive tasks
         # logger.debug("Arguments: args={}, kwargs={}".format(args, kwargs))
         try:
-            result: R = func(*args, **kwargs)
+            result = func(*args, **kwargs)
             logger.debug(f"Exiting function: {func.__name__}")
             # logger.debug("Return value: {}".format(result))
             return result

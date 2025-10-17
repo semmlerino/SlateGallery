@@ -12,5 +12,5 @@
     "reportMissingImports": true,
     "reportMissingTypeStubs": false,
     "pythonVersion": "3.9",
-    "typeCheckingMode": "standard"
+    "typeCheckingMode": "recommended"
 }

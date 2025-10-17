@@ -9,12 +9,13 @@ while maintaining identical functionality to the original.
 import os
 import sys
 import webbrowser
-from typing import Optional
 
 # Add src to path for imports
 sys.path.insert(0, str(os.path.dirname(os.path.abspath(__file__))))
 
 # Qt imports
+from core.cache_manager import ImprovedCacheManager
+from core.config_manager import load_config, save_config
 from PySide6 import QtWidgets
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction
@@ -38,9 +39,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-from core.cache_manager import ImprovedCacheManager
-from core.config_manager import load_config, save_config
 
 # Import from our new modular structure
 from utils.logging_config import log_function, logger
@@ -105,10 +103,6 @@ class GalleryGeneratorApp(QMainWindow):
         self.slates_dict = {}
         self.filtered_slates = {}
         self.unique_focal_lengths = set()
-
-        # Thread attributes - initialized dynamically when needed
-        self.scan_thread: Optional[ScanThread] = None
-        self.gallery_thread: Optional[GenerateGalleryThread] = None
 
         # Set up debounced filtering timer
         self.filter_timer = QTimer()
