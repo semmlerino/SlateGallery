@@ -14,8 +14,6 @@ import webbrowser
 sys.path.insert(0, str(os.path.dirname(os.path.abspath(__file__))))
 
 # Qt imports
-from core.cache_manager import ImprovedCacheManager
-from core.config_manager import load_config, save_config
 from PySide6 import QtWidgets
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction
@@ -39,6 +37,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from core.cache_manager import ImprovedCacheManager
+from core.config_manager import load_config, save_config
 
 # Import from our new modular structure
 from utils.logging_config import log_function, logger

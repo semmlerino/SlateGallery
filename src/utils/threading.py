@@ -220,7 +220,12 @@ class GenerateGalleryThread(QtCore.QThread):
                 return None
 
             # Import here to avoid circular imports
-            from core.image_processor import generate_thumbnail, get_exif_data, get_image_date, get_orientation
+            from core.image_processor import (
+                generate_thumbnail,
+                get_exif_data,
+                get_image_date,
+                get_orientation,
+            )
 
             exif = get_exif_data(image_path)
             focal_length = exif.get("FocalLength", None)

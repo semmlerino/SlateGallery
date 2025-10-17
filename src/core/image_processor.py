@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PIL import Image
 from PIL.ExifTags import IFD, TAGS
+
 from utils.logging_config import log_function, logger
 
 # ----------------------------- Helper Functions -----------------------------

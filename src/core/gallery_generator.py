@@ -3,6 +3,7 @@
 import os
 
 from jinja2 import Environment, FileSystemLoader
+
 from utils.logging_config import log_function, logger
 
 # ----------------------------- HTML Gallery Generation -----------------------------
