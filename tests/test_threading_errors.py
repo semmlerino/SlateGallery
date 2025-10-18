@@ -10,13 +10,12 @@ Focus: Testing OUR code's error handling, not stdlib/Qt behavior.
 9 tests targeting real bugs users encounter.
 """
 
-import pytest
-from pathlib import Path
 from unittest.mock import Mock
-from PySide6.QtCore import QThread
 
-from src.utils.threading import ScanThread, GenerateGalleryThread
+import pytest
+
 from src.core.cache_manager import ImprovedCacheManager
+from src.utils.threading import GenerateGalleryThread, ScanThread
 
 
 class TestScanThreadErrors:
@@ -277,8 +276,8 @@ class TestConcurrency:
         Real-world scenario: Multiple threads scanning different directories,
         all writing to the same cache manager
         """
-        from concurrent.futures import ThreadPoolExecutor
         import threading
+        from concurrent.futures import ThreadPoolExecutor
 
         cache = ImprovedCacheManager(str(tmp_path))
         lock = threading.Lock()
