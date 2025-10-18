@@ -377,14 +377,18 @@ class GalleryGeneratorApp(QMainWindow):
             }}
 
             QListWidget::item:selected {{
-                background-color: #1976D2;
-                color: #FFFFFF;
-                font-weight: bold;
-                border-left: 4px solid #0D47A1;
+                background-color: #E3F2FD;
+                color: #1565C0;
+                border-left: 3px solid #1976D2;
+            }}
+
+            QListWidget::item:selected:hover {{
+                background-color: #BBDEFB;
+                color: #0D47A1;
             }}
 
             QListWidget::item:hover {{
-                background-color: {COLOR_BACKGROUND};
+                background-color: #F5F5F5;
             }}
 
             /* Progress Bar */
