@@ -279,7 +279,11 @@
             width: auto;  
         }
         .image-container:hover {
-            transform: translateY(-3px);  
+            transform: translateY(-3px);
+        }
+
+        .image-container.selected:hover {
+            box-shadow: 0 0 0 2px rgba(13, 71, 161, 0.5), 0 6px 16px rgba(13, 71, 161, 0.35);
         }
         .image-container img {
             width: var(--image-width);  
@@ -342,7 +346,30 @@
             border-radius: 3px;
         }
         .image-container.selected {
-            border: 2px solid #0D47A1;  
+            border: 4px solid #0D47A1;
+            background-color: rgba(13, 71, 161, 0.08);
+            box-shadow: 0 0 0 2px rgba(13, 71, 161, 0.3), 0 4px 12px rgba(13, 71, 161, 0.25);
+            transition: all 0.2s ease;
+        }
+
+        .image-container.selected::after {
+            content: '✓';
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background-color: #0D47A1;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+            z-index: 10;
+            pointer-events: none;
         }
 
         .enlarge-button {
@@ -490,6 +517,18 @@
 
         /* Removed media queries since it's only for big screens */
 
+        /* Status Bar Styles */
+        .status-bar {
+            background-color: #f5f5f5;
+            color: #555555;
+            text-align: center;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-top: 1px solid #dddddd;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
     </style>
 </head>
 <body>
@@ -545,6 +584,11 @@
         <!-- Updated button text and aria-label -->
         <button type="button" id="select-all-photos" aria-label="Select all visible Photos">Select all visible Photos</button>
         <button type="button" id="deselect-all-photos" aria-label="Deselect All Photos">Deselect All Photos</button>
+    </div>
+
+    <!-- Status Bar: Shows visible/total images and selection count -->
+    <div class="status-bar" id="status-bar">
+        Showing 0 of 0 images | 0 selected
     </div>
 
     {% for slate in gallery %}
@@ -603,16 +647,119 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // ===== SELECTION PERSISTENCE SYSTEM =====
+            // Saves photo selections to localStorage and restores them on page load
+            // Uses gallery identifier (based on page path) to prevent cross-gallery pollution
+
+            // Generate gallery identifier from current page URL
+            function getGalleryIdentifier() {
+                // Use pathname to uniquely identify this gallery
+                // E.g., /path/to/gallery1.html vs /path/to/gallery2.html
+                return 'gallery_selections_' + window.location.pathname.replace(/[^a-zA-Z0-9]/g, '_');
+            }
+
+            // Save current selections to localStorage
+            function saveSelections() {
+                if (!window.localStorage) return; // Bail if localStorage unavailable
+
+                try {
+                    const selections = {};
+                    const checkboxes = document.querySelectorAll('.select-checkbox');
+
+                    checkboxes.forEach(checkbox => {
+                        if (checkbox.checked) {
+                            const container = checkbox.parentElement;
+                            const imagePath = container.getAttribute('data-full-image');
+                            if (imagePath) {
+                                selections[imagePath] = true;
+                            }
+                        }
+                    });
+
+                    const storageKey = getGalleryIdentifier();
+                    localStorage.setItem(storageKey, JSON.stringify(selections));
+                } catch (e) {
+                    // localStorage might be full or disabled
+                    console.warn('Failed to save selections to localStorage:', e);
+                }
+            }
+
+            // Restore selections from localStorage
+            function restoreSelections() {
+                if (!window.localStorage) return;
+
+                try {
+                    const storageKey = getGalleryIdentifier();
+                    const savedData = localStorage.getItem(storageKey);
+
+                    if (!savedData) return;
+
+                    const selections = JSON.parse(savedData);
+                    let restoredCount = 0;
+
+                    // Apply saved selections to current page
+                    const containers = document.querySelectorAll('.image-container');
+                    containers.forEach(container => {
+                        const imagePath = container.getAttribute('data-full-image');
+                        if (imagePath && selections[imagePath]) {
+                            const checkbox = container.querySelector('.select-checkbox');
+                            if (checkbox) {
+                                checkbox.checked = true;
+                                container.classList.add('selected');
+                                restoredCount++;
+                            }
+                        }
+                    });
+
+                    // Show notification if selections were restored
+                    if (restoredCount > 0) {
+                        showNotification(`Restored ${restoredCount} photo selection${restoredCount !== 1 ? 's' : ''} from previous session`);
+                    }
+                } catch (e) {
+                    console.warn('Failed to restore selections from localStorage:', e);
+                }
+            }
+
+            // Debounced save to avoid excessive localStorage writes
+            let saveTimeout = null;
+            function debouncedSave() {
+                clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(saveSelections, 300);
+            }
+
             // Notification Function
             function showNotification(message, isError = false) {
                 const notificationBar = document.getElementById('notification-bar');
                 notificationBar.textContent = message;
                 notificationBar.classList.toggle('error', isError);
                 notificationBar.classList.add('show');
-                
+
                 setTimeout(() => {
                     notificationBar.classList.remove('show');
-                }, 3000);  
+                }, 3000);
+            }
+
+            // Update Status Bar with current counts
+            function updateCounts() {
+                const statusBar = document.getElementById('status-bar');
+                if (!statusBar) return;
+
+                const allContainers = document.querySelectorAll('.image-container');
+                const totalImages = allContainers.length;
+
+                // Count visible images (not hidden by filters)
+                let visibleCount = 0;
+                allContainers.forEach(container => {
+                    if (container.style.display !== 'none') {
+                        visibleCount++;
+                    }
+                });
+
+                // Count selected checkboxes
+                const selectedCount = document.querySelectorAll('.select-checkbox:checked').length;
+
+                // Update status bar text
+                statusBar.textContent = `Showing ${visibleCount} of ${totalImages} images | ${selectedCount} selected`;
             }
 
             // Function to filter images based on selected filters
@@ -654,6 +801,9 @@
                         displayImage(currentImageIndex);
                     }
                 }
+
+                // Update status bar after filtering
+                updateCounts();
             }
 
             // Functions to select/deselect all checkboxes based on a filter class
@@ -682,6 +832,8 @@
                         }
                     }
                 });
+                debouncedSave(); // Save selections after bulk operation
+                updateCounts(); // Update status bar
             }
 
             // Global Deselect All Photos
@@ -691,6 +843,8 @@
                     cb.checked = false;
                     cb.parentElement.classList.remove('selected');
                 });
+                debouncedSave(); // Save selections after bulk operation
+                updateCounts(); // Update status bar
             }
 
             document.getElementById('select-all-photos').addEventListener('click', selectAllPhotos);
@@ -846,6 +1000,10 @@
                             modalSelectCheckbox.checked = this.checked;
                         }
                     }
+                    // Save selections after individual checkbox change
+                    debouncedSave();
+                    // Update status bar
+                    updateCounts();
                 });
             });
 
@@ -1008,6 +1166,8 @@
                     checkbox.checked = true;
                     checkbox.parentElement.classList.add('selected');
                 });
+                debouncedSave(); // Save selections after bulk operation
+                updateCounts(); // Update status bar
             }
 
             function deselectAllInSlate(slateElement) {
@@ -1016,6 +1176,8 @@
                     checkbox.checked = false;
                     checkbox.parentElement.classList.remove('selected');
                 });
+                debouncedSave(); // Save selections after bulk operation
+                updateCounts(); // Update status bar
             }
 
             var selectAllSlateButtons = document.querySelectorAll('.select-all-slate');
@@ -1048,6 +1210,10 @@
                     } else {
                         imageContainer.classList.remove('selected');
                     }
+                    // Save selections after modal checkbox change
+                    debouncedSave();
+                    // Update status bar
+                    updateCounts();
                 }
             });
 
@@ -1056,6 +1222,10 @@
                 filterImages();
                 adjustImageSizes(sizeSlider.value + 'px');
                 // Images use lazy loading for better performance
+                // Restore saved selections from previous session
+                restoreSelections();
+                // Initialize status bar counts
+                updateCounts();
             }
 
             initializeGallery();
