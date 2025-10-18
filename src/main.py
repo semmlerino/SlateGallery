@@ -403,8 +403,8 @@ class GalleryGeneratorApp(QMainWindow):
         main_layout.setSpacing(SPACING_SM)  # Tighter spacing between cards
         central_widget.setLayout(main_layout)
 
-        # Directory Selection Card
-        dir_card = CardWidget("Directory Selection")
+        # Directory Card
+        dir_card = CardWidget()  # No title - self-evident
         dir_layout = QGridLayout()
         dir_layout.setSpacing(SPACING_SM)
 
