@@ -83,6 +83,10 @@ COLOR_TEXT_DISABLED = "#9E9E9E"
 COLOR_SUCCESS = "#A5D6A7"           # Light green
 COLOR_WARNING = "#FFB74D"           # Light orange
 
+COLOR_ACCENT = "#FFD54F"            # Yellow - accent actions (Open Gallery)
+COLOR_ACCENT_HOVER = "#FFB74D"
+COLOR_ACCENT_TEXT = "#BF360C"
+
 # ----------------------------- Custom File Dialog -----------------------------
 
 
@@ -294,6 +298,31 @@ class GalleryGeneratorApp(QMainWindow):
 
             #tertiaryButton:disabled {{
                 border-color: {COLOR_BORDER};
+                color: {COLOR_TEXT_DISABLED};
+            }}
+
+            /* Button System - Accent (Eye-catching actions like Open Gallery) */
+            #accentButton {{
+                background-color: {COLOR_ACCENT};
+                color: {COLOR_ACCENT_TEXT};
+                border: none;
+                border-radius: 6px;
+                padding: {SPACING_MD}px {SPACING_LG}px;
+                font-size: 14px;
+                font-weight: bold;
+                min-width: 100px;
+            }}
+
+            #accentButton:hover {{
+                background-color: {COLOR_ACCENT_HOVER};
+            }}
+
+            #accentButton:pressed {{
+                background-color: #FFA726;
+            }}
+
+            #accentButton:disabled {{
+                background-color: {COLOR_BORDER};
                 color: {COLOR_TEXT_DISABLED};
             }}
 
@@ -587,7 +616,7 @@ class GalleryGeneratorApp(QMainWindow):
         self.btn_generate = btn_generate
 
         btn_open_gallery = QPushButton("Open Gallery")
-        btn_open_gallery.setObjectName("tertiaryButton")
+        btn_open_gallery.setObjectName("accentButton")
         _ = btn_open_gallery.clicked.connect(self.on_open_gallery)
         btn_open_gallery.setEnabled(False)
         main_layout.addWidget(btn_open_gallery)
