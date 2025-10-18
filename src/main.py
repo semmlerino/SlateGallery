@@ -463,7 +463,7 @@ class GalleryGeneratorApp(QMainWindow):
         title_container.addStretch()
 
         slates_title = QLabel("Slates")
-        slates_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #37474F; background-color: #F0F7FF; border-radius: 4px; padding: 6px 16px;")
+        slates_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #37474F; background-color: #F0F7FF; border-radius: 4px; padding: 8px 32px;")
         title_container.addWidget(slates_title)
 
         title_container.addStretch()
