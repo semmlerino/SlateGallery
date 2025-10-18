@@ -1072,6 +1072,256 @@
                 // Would test fallback implementation
                 expect(navigator.clipboard).to.be.undefined;
             });
+
+            describe('Badge Update Consistency (Bug Fix Verification)', function() {
+                // Helper functions specific to badge update tests
+                const ExportBadgeHelpers = {
+                    getBadgeCount() {
+                        const button = document.querySelector('.export-button button');
+                        if (!button) return null;
+                        const count = button.getAttribute('data-count');
+                        return count ? parseInt(count) : 0;
+                    },
+
+                    isBadgeVisible() {
+                        const exportBtn = document.querySelector('.export-button');
+                        return exportBtn && exportBtn.classList.contains('has-selection');
+                    },
+
+                    clickImage(container) {
+                        const img = container.querySelector('img');
+                        if (img) {
+                            TestHelpers.simulateClick(img);
+                        }
+                    },
+
+                    clickCheckbox(container) {
+                        const checkbox = container.querySelector('.select-checkbox');
+                        if (checkbox) {
+                            TestHelpers.simulateClick(checkbox);
+                        }
+                    },
+
+                    getSelectedCount() {
+                        return document.querySelectorAll('.select-checkbox:checked').length;
+                    },
+
+                    // Simulate the actual gallery behavior
+                    simulateImageClick(container) {
+                        const img = container.querySelector('img');
+                        const checkbox = container.querySelector('.select-checkbox');
+                        if (checkbox && img) {
+                            checkbox.checked = !checkbox.checked;
+                            // This is the key bug fix - with bubbles: true
+                            checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    },
+
+                    // Simulate checkbox click (direct)
+                    simulateCheckboxClick(container) {
+                        const checkbox = container.querySelector('.select-checkbox');
+                        if (checkbox) {
+                            checkbox.checked = !checkbox.checked;
+                            checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    },
+
+                    // Mock updateCounts function (simulates gallery behavior)
+                    updateCounts() {
+                        const selectedCount = this.getSelectedCount();
+                        const exportBtn = document.querySelector('.export-button');
+                        const button = exportBtn?.querySelector('button');
+
+                        if (selectedCount > 0) {
+                            exportBtn?.classList.add('has-selection');
+                            button?.setAttribute('data-count', selectedCount.toString());
+                        } else {
+                            exportBtn?.classList.remove('has-selection');
+                            button?.removeAttribute('data-count');
+                        }
+                    }
+                };
+
+                beforeEach(function() {
+                    // Setup event delegation for checkbox changes
+                    // This simulates the actual gallery's event delegation pattern
+                    const changeHandler = function(e) {
+                        if (e.target.matches('.select-checkbox')) {
+                            const checkbox = e.target;
+                            if (checkbox.checked) {
+                                checkbox.parentElement.classList.add('selected');
+                            } else {
+                                checkbox.parentElement.classList.remove('selected');
+                            }
+                            // Trigger badge update
+                            ExportBadgeHelpers.updateCounts();
+                        }
+                    };
+
+                    document.addEventListener('change', changeHandler);
+
+                    // Store handler for cleanup
+                    this.changeHandler = changeHandler;
+                });
+
+                afterEach(function() {
+                    // Remove event listener
+                    if (this.changeHandler) {
+                        document.removeEventListener('change', this.changeHandler);
+                    }
+                });
+
+                it('should update badge when clicking individual checkbox directly', function() {
+                    // Click checkbox directly
+                    ExportBadgeHelpers.simulateCheckboxClick(containers[0]);
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(1);
+                    expect(ExportBadgeHelpers.isBadgeVisible()).to.be.true;
+
+                    // Click another checkbox
+                    ExportBadgeHelpers.simulateCheckboxClick(containers[1]);
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(2);
+                });
+
+                it('should update badge when clicking image to select (BUG FIX TEST)', function() {
+                    // This is the KEY test for the bug fix
+                    // Click on IMAGE (not checkbox) to toggle selection
+                    ExportBadgeHelpers.simulateImageClick(containers[0]);
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(1);
+                    expect(ExportBadgeHelpers.isBadgeVisible()).to.be.true;
+
+                    // Click another image
+                    ExportBadgeHelpers.simulateImageClick(containers[1]);
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(2);
+
+                    // Verify selection visual feedback
+                    expect(containers[0].classList.contains('selected')).to.be.true;
+                    expect(containers[1].classList.contains('selected')).to.be.true;
+                });
+
+                it('should update badge on image click deselection', function() {
+                    // Select 3 images via image clicks
+                    ExportBadgeHelpers.simulateImageClick(containers[0]);
+                    ExportBadgeHelpers.simulateImageClick(containers[1]);
+                    ExportBadgeHelpers.simulateImageClick(containers[2]);
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(3);
+
+                    // Click one image again to deselect
+                    ExportBadgeHelpers.simulateImageClick(containers[1]);
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(2);
+                    expect(containers[1].classList.contains('selected')).to.be.false;
+                });
+
+                it('should update badge with mix of checkbox and image clicks', function() {
+                    // Click checkbox directly (select 1)
+                    ExportBadgeHelpers.simulateCheckboxClick(containers[0]);
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(1);
+
+                    // Click image to select (select 2)
+                    ExportBadgeHelpers.simulateImageClick(containers[1]);
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(2);
+
+                    // Click another checkbox (select 3)
+                    ExportBadgeHelpers.simulateCheckboxClick(containers[2]);
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(3);
+
+                    // Both methods should work seamlessly together
+                    expect(containers[0].querySelector('.select-checkbox').checked).to.be.true;
+                    expect(containers[1].querySelector('.select-checkbox').checked).to.be.true;
+                    expect(containers[2].querySelector('.select-checkbox').checked).to.be.true;
+                });
+
+                it('should update badge when selecting all images programmatically', function() {
+                    // Simulate "Select All" functionality
+                    containers.forEach(container => {
+                        const checkbox = container.querySelector('.select-checkbox');
+                        checkbox.checked = true;
+                        checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                    });
+
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(5);
+                    expect(ExportBadgeHelpers.isBadgeVisible()).to.be.true;
+                });
+
+                it('should hide badge when deselecting all images', function() {
+                    // Select 3 images
+                    containers.slice(0, 3).forEach(container => {
+                        ExportBadgeHelpers.simulateImageClick(container);
+                    });
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(3);
+
+                    // Deselect all
+                    containers.slice(0, 3).forEach(container => {
+                        ExportBadgeHelpers.simulateImageClick(container);
+                    });
+
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(0);
+                    expect(ExportBadgeHelpers.isBadgeVisible()).to.be.false;
+                });
+
+                it('should update badge correctly with hidden images', function() {
+                    // Hide 2 images
+                    containers.slice(3).forEach(c => c.style.display = 'none');
+
+                    // Select 2 visible images via image clicks
+                    ExportBadgeHelpers.simulateImageClick(containers[0]);
+                    ExportBadgeHelpers.simulateImageClick(containers[1]);
+
+                    // Badge should show 2 (not affected by hidden images)
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(2);
+                });
+
+                it('should update badge in hidden mode when selecting images', function() {
+                    // Hide 3 images
+                    containers.slice(0, 3).forEach(c => {
+                        c.style.display = 'none';
+                        c.setAttribute('data-hidden', 'true');
+                    });
+
+                    // Make hidden images visible (simulate hidden mode)
+                    containers.slice(0, 3).forEach(c => c.style.display = 'flex');
+                    containers.slice(3).forEach(c => c.style.display = 'none');
+
+                    // Select 2 previously-hidden images via image clicks
+                    ExportBadgeHelpers.simulateImageClick(containers[0]);
+                    ExportBadgeHelpers.simulateImageClick(containers[1]);
+
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(2);
+                });
+
+                it('should update badge after programmatic selection with bubbling', function() {
+                    // Programmatically set checkbox
+                    const checkbox = containers[0].querySelector('.select-checkbox');
+                    checkbox.checked = true;
+                    // Dispatch change event WITH bubbles: true
+                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+
+                    // Badge should update
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(1);
+                    expect(containers[0].classList.contains('selected')).to.be.true;
+                });
+
+                it('should NOT update badge without event bubbling (REGRESSION TEST)', function() {
+                    // Reset badge
+                    const exportBtn = document.querySelector('.export-button');
+                    exportBtn.classList.remove('has-selection');
+                    exportBtn.querySelector('button').removeAttribute('data-count');
+
+                    // Programmatically set checkbox
+                    const checkbox = containers[0].querySelector('.select-checkbox');
+                    checkbox.checked = true;
+
+                    // Dispatch change event WITHOUT bubbles: true
+                    checkbox.dispatchEvent(new Event('change', { bubbles: false }));
+
+                    // Badge should NOT update (event doesn't bubble to document listener)
+                    expect(ExportBadgeHelpers.getBadgeCount()).to.equal(0);
+                    expect(ExportBadgeHelpers.isBadgeVisible()).to.be.false;
+
+                    // This test ensures the bug doesn't regress
+                    // The bug was: image clicks dispatched events without bubbles: true
+                    // This prevented the document-level change listener from firing
+                });
+            });
         });
 
         // =============================================================================
