@@ -461,7 +461,7 @@ class GalleryGeneratorApp(QMainWindow):
         # Centered "Slates" title
         slates_title = QLabel("Slates")
         slates_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        slates_title.setStyleSheet("font-size: 16px; font-weight: 600; margin-bottom: 8px;")
+        slates_title.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {COLOR_TEXT_PRIMARY}; margin-bottom: 12px; padding: 8px;")
         selection_card.content_layout.addWidget(slates_title)
 
         # Filter input
