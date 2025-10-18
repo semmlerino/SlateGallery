@@ -3,9 +3,10 @@
 import multiprocessing
 import os
 import threading
+from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional, Protocol, runtime_checkable
 
 from PySide6 import QtCore
 from PySide6.QtCore import Signal
@@ -15,9 +16,22 @@ from .logging_config import log_function, logger
 
 # Type aliases for better documentation (TypedDict imports cause circular dependencies)
 # These match the TypedDict definitions in core.gallery_generator
-ImageData = dict[str, Any]
-FocalLengthData = dict[str, Any]  # Structure: {"value": float, "count": int}
-DateData = dict[str, Any]  # Structure: {"value": str, "count": int, "display_date": str}
+# Note: Using object for values since the exact structure varies and is checked at runtime
+ImageData = dict[str, object]
+FocalLengthData = dict[str, object]  # Structure: {"value": float, "count": int}
+DateData = dict[str, object]  # Structure: {"value": str, "count": int, "display_date": str}
+
+
+@runtime_checkable
+class CacheManagerProtocol(Protocol):
+    """Protocol defining the interface for cache managers."""
+    def process_images_batch(
+        self, image_paths: Sequence[object], callback: Optional[Callable[[int], None]] = None
+    ) -> list[dict[str, object]]:
+        ...
+
+    def save_cache(self, root_dir: str, slates: object) -> None:
+        ...
 
 # ----------------------------- Worker Threads -----------------------------
 
@@ -26,16 +40,16 @@ class ScanThread(QtCore.QThread):
     scan_complete: Signal = Signal(dict, str)  # type: ignore[misc]
     progress: Signal = Signal(int)  # type: ignore[misc]
 
-    def __init__(self, root_dir: str, cache_manager: Any) -> None:
+    def __init__(self, root_dir: str, cache_manager: CacheManagerProtocol) -> None:
         super().__init__()
         self.root_dir: str = str(root_dir)
-        self.cache_manager: Any = cache_manager
+        self.cache_manager: CacheManagerProtocol = cache_manager
         self._is_running: bool = True
 
     def stop(self) -> None:
         """Gracefully stop the thread."""
         self._is_running = False
-        self.wait(5000)  # Wait max 5 seconds for thread to finish
+        _ = self.wait(5000)  # Wait max 5 seconds for thread to finish
 
     @log_function
     @override
@@ -45,11 +59,15 @@ class ScanThread(QtCore.QThread):
             from core.image_processor import scan_directories
 
             logger.info("Starting directory scan...")
-            slates: dict[str, Any] = scan_directories(self.root_dir)
+            slates = scan_directories(self.root_dir)
 
             processed_slates: int = 0
-            total_slates: int = len(slates)
+            total_slates: int = len(slates) if isinstance(slates, dict) else 0
             logger.debug(f"Total slates to process: {total_slates}")
+
+            if not isinstance(slates, dict):
+                self.scan_complete.emit({}, "Invalid slates data.")
+                return
 
             for _slate, data in slates.items():
                 # Check if we should stop
@@ -58,11 +76,14 @@ class ScanThread(QtCore.QThread):
                     self.scan_complete.emit({}, "Scan cancelled.")
                     return
 
-                image_paths: list[dict[str, Any]] = data["images"]
-                processed_images: list[dict[str, Any]] = self.cache_manager.process_images_batch(
-                    image_paths, callback=lambda p: self.progress.emit(int(p))
+                if not isinstance(data, dict):
+                    continue
+
+                image_paths = data.get("images", [])
+                processed_images = self.cache_manager.process_images_batch(
+                    image_paths, callback=lambda p: self.progress.emit(int(p))  # type: ignore[arg-type]
                 )
-                data["images"] = processed_images
+                data["images"] = processed_images  # pyright: ignore[reportArgumentType]
 
                 processed_slates += 1
                 if total_slates > 0:
@@ -90,8 +111,8 @@ class GenerateGalleryThread(QtCore.QThread):
     def __init__(
         self,
         selected_slates: list[str],
-        slates_dict: dict[str, Any],
-        cache_manager: Any,
+        slates_dict: dict[str, object],
+        cache_manager: CacheManagerProtocol,
         output_dir: str,
         root_dir: str,
         template_path: str,
@@ -101,8 +122,8 @@ class GenerateGalleryThread(QtCore.QThread):
     ) -> None:
         super().__init__()
         self.selected_slates: list[str] = selected_slates
-        self.slates_dict: dict[str, Any] = slates_dict
-        self.cache_manager: Any = cache_manager
+        self.slates_dict: dict[str, object] = slates_dict
+        self.cache_manager: CacheManagerProtocol = cache_manager
         self.output_dir: str = output_dir
         self.root_dir: str = root_dir
         self.template_path: str = template_path
@@ -131,7 +152,7 @@ class GenerateGalleryThread(QtCore.QThread):
     def stop(self) -> None:
         """Gracefully stop the thread."""
         self._is_running = False
-        self.wait(5000)  # Wait max 5 seconds for thread to finish
+        _ = self.wait(5000)  # Wait max 5 seconds for thread to finish
 
     @override
     def run(self) -> None:
@@ -139,7 +160,7 @@ class GenerateGalleryThread(QtCore.QThread):
             logger.info("Generating Gallery...")
             self.progress.emit(0)
 
-            gallery_slates: list[dict[str, Any]] = []
+            gallery_slates: list[dict[str, object]] = []
             total_slates: int = len(self.selected_slates)
             processed_slates: int = 0
             logger.info(f"Total slates selected: {total_slates}")
@@ -151,22 +172,28 @@ class GenerateGalleryThread(QtCore.QThread):
                     self.gallery_complete.emit(False, "Gallery generation cancelled.")
                     return
 
-                images: list[dict[str, Any]] = self.slates_dict.get(slate, {}).get("images", [])
+                slate_data = self.slates_dict.get(slate, {})
+                images: list[object] = slate_data.get("images", []) if isinstance(slate_data, dict) else []  # type: ignore[arg-type]
 
                 # Always use parallel processing for better performance
                 # Even without thumbnails, we still need to extract EXIF data in parallel
                 slate_images: list[ImageData]
                 if len(images) > 1:
-                    slate_images = self.process_images_parallel(images)
+                    slate_images = self.process_images_parallel(images)  # type: ignore[arg-type]
                 else:
                     # Only use sequential for single image (rare case)
                     slate_images = []
                     for image in images:
-                        # Skip macOS resource fork files
-                        if os.path.basename(image["path"]).startswith("._"):
-                            logger.debug(f"Skipping macOS resource fork file: {image['path']}")
+                        if not isinstance(image, dict):
                             continue
-                        image_data: Optional[ImageData] = self.process_image(image["path"])
+                        # Skip macOS resource fork files
+                        image_path_val = image.get("path", "")
+                        if not isinstance(image_path_val, str):
+                            continue
+                        if os.path.basename(image_path_val).startswith("._"):
+                            logger.debug(f"Skipping macOS resource fork file: {image_path_val}")
+                            continue
+                        image_data: Optional[ImageData] = self.process_image(image_path_val)
                         if image_data is not None:
                             slate_images.append(image_data)
 
@@ -223,7 +250,7 @@ class GenerateGalleryThread(QtCore.QThread):
             logger.error(error_message, exc_info=True)
             self.gallery_complete.emit(False, error_message)
 
-    def process_images_parallel(self, images: list[dict[str, Any]]) -> list[ImageData]:
+    def process_images_parallel(self, images: list[object]) -> list[ImageData]:
         """Process multiple images in parallel using ThreadPoolExecutor."""
         import time
         start_time: float = time.perf_counter()
@@ -231,11 +258,15 @@ class GenerateGalleryThread(QtCore.QThread):
         results: list[ImageData] = []
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all image processing tasks (skip macOS resource fork files)
-            future_to_image: dict[Future[Optional[ImageData]], str] = {
-                executor.submit(self.process_image, img["path"]): img["path"]
-                for img in images
-                if not os.path.basename(img["path"]).startswith("._")
-            }
+            future_to_image: dict[Future[Optional[ImageData]], str] = {}
+            for img in images:
+                if not isinstance(img, dict):
+                    continue
+                img_path = img.get("path", "")
+                if not isinstance(img_path, str):
+                    continue
+                if not os.path.basename(img_path).startswith("._"):
+                    future_to_image[executor.submit(self.process_image, img_path)] = img_path
 
             # Collect results as they complete
             for future in as_completed(future_to_image):
@@ -248,7 +279,7 @@ class GenerateGalleryThread(QtCore.QThread):
                     logger.error(f"Error processing image {image_path} in parallel: {e}")
 
         # Sort results to maintain original order
-        results.sort(key=lambda x: x.get("filename", ""))
+        results.sort(key=lambda x: str(x.get("filename", "")))
 
         # Log performance metrics
         elapsed_time: float = time.perf_counter() - start_time
@@ -272,8 +303,8 @@ class GenerateGalleryThread(QtCore.QThread):
                 get_orientation,
             )
 
-            exif: dict[str, Any] = get_exif_data(image_path)
-            focal_length: Any = exif.get("FocalLength", None)
+            exif: dict[str, object] = get_exif_data(image_path)
+            focal_length: object = exif.get("FocalLength", None)
             focal_length_value: Optional[float] = None
 
             if focal_length:
@@ -292,7 +323,7 @@ class GenerateGalleryThread(QtCore.QThread):
                         logger.warning(f"Invalid focal length tuple for {image_path}: {e}")
                 else:
                     try:
-                        focal_length_value = float(focal_length)
+                        focal_length_value = float(focal_length)  # pyright: ignore[reportArgumentType]
                     except Exception as e:
                         logger.warning(f"Invalid focal length value for {image_path}: {e}")
 
@@ -312,21 +343,22 @@ class GenerateGalleryThread(QtCore.QThread):
                 with self.date_lock:
                     self.date_counts[date_key] = self.date_counts.get(date_key, 0) + 1
 
-            if focal_length_value:
+            if focal_length_value is not None:
                 with self.focal_length_lock:
                     self.focal_length_counts[focal_length_value] = (
                         self.focal_length_counts.get(focal_length_value, 0) + 1
                     )
 
             # Generate thumbnails if enabled
-            thumbnails: dict[str, str] = {}
+            thumbnails: dict[str, object] = {}
             thumbnail_path: str = image_path  # Default to original
             if self.generate_thumbnails:
-                thumbnails = generate_thumbnail(image_path, self.thumb_dir, size=self.thumbnail_size)
+                thumbnails = generate_thumbnail(image_path, self.thumb_dir, size=self.thumbnail_size)  # type: ignore[assignment]
                 logger.debug(f"Generated {len(thumbnails)} thumbnails for {filename}")
                 # Get the single thumbnail path
                 size_key: str = f"{self.thumbnail_size}x{self.thumbnail_size}"
-                thumbnail_path = thumbnails.get(size_key, image_path)
+                thumb_val = thumbnails.get(size_key, image_path)
+                thumbnail_path = str(thumb_val) if thumb_val else image_path
 
             return {
                 "original_path": image_path,

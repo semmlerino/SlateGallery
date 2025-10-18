@@ -6,6 +6,7 @@ while maintaining identical functionality to the original.
 """
 
 # System imports
+import fnmatch
 import os
 import sys
 import webbrowser
@@ -163,7 +164,7 @@ class GalleryGeneratorApp(QMainWindow):
         self.setGeometry(100, 100, 900, 700)
 
         # Load configuration with multiple directories
-        self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref = load_config()
+        self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref = load_config()
         self.output_dir = os.path.expanduser("~")
 
         self.cache_manager = ImprovedCacheManager(
@@ -173,7 +174,7 @@ class GalleryGeneratorApp(QMainWindow):
         if not self.current_root_dir:
             self.current_root_dir = os.path.expanduser("~")
             self.cached_root_dirs.append(self.current_root_dir)
-            save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
+            save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
             logger.info(f"Default root directory set to home directory: {self.current_root_dir}")
 
         self.slates_dict = {}
@@ -498,6 +499,12 @@ class GalleryGeneratorApp(QMainWindow):
         title_container.addStretch()
         selection_card.content_layout.addLayout(title_container)
 
+        # Filter count label (showing X of Y slates)
+        self.lbl_filter_count = QLabel("")
+        self.lbl_filter_count.setStyleSheet("font-size: 12px; color: #666666; padding: 4px 0px;")
+        self.lbl_filter_count.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        selection_card.content_layout.addWidget(self.lbl_filter_count)
+
         # Filter input
         filter_input_layout = QHBoxLayout()
         filter_input_layout.setSpacing(SPACING_SM)
@@ -510,6 +517,20 @@ class GalleryGeneratorApp(QMainWindow):
         filter_input_layout.addWidget(self.txt_filter)
 
         selection_card.content_layout.addLayout(filter_input_layout)
+
+        # Exclusion filter input
+        exclude_input_layout = QHBoxLayout()
+        exclude_input_layout.setSpacing(SPACING_SM)
+        lbl_exclude = QLabel("Exclude:")
+        exclude_input_layout.addWidget(lbl_exclude)
+
+        self.txt_exclude = QLineEdit()
+        self.txt_exclude.setPlaceholderText("Exclude patterns (e.g., *hdri*, *test*)...")
+        self.txt_exclude.setText(self.exclude_patterns_pref)  # Load saved preference
+        _ = self.txt_exclude.textChanged.connect(self.on_filter)
+        exclude_input_layout.addWidget(self.txt_exclude)
+
+        selection_card.content_layout.addLayout(exclude_input_layout)
 
         # List and buttons layout
         list_buttons_layout = QHBoxLayout()
@@ -562,8 +583,8 @@ class GalleryGeneratorApp(QMainWindow):
         self.chk_generate_thumbnails = QCheckBox("Generate thumbnails for faster loading")
         self.chk_generate_thumbnails.setChecked(self.generate_thumbnails_pref)
         self.chk_generate_thumbnails.setToolTip(
-            "When enabled, creates optimized thumbnails for faster gallery loading.\n"
-            "Uses parallel processing for 5-10x faster generation.\n"
+            "When enabled, creates optimized thumbnails for faster gallery loading.\n" +
+            "Uses parallel processing for 5-10x faster generation.\n" +
             "When disabled, uses original full-resolution images (slower but no processing needed)."
         )
         _ = self.chk_generate_thumbnails.stateChanged.connect(self.on_thumbnail_pref_changed)
@@ -573,9 +594,9 @@ class GalleryGeneratorApp(QMainWindow):
         self.combo_thumbnail_size = QComboBox()
         self.combo_thumbnail_size.addItems(["600x600", "800x800", "1200x1200"])
         self.combo_thumbnail_size.setToolTip(
-            "Select the thumbnail resolution:\n"
-            "• 600x600: Smallest files, fastest loading (recommended for web)\n"
-            "• 800x800: Balanced quality and file size\n"
+            "Select the thumbnail resolution:\n" +
+            "• 600x600: Smallest files, fastest loading (recommended for web)\n" +
+            "• 800x800: Balanced quality and file size\n" +
             "• 1200x1200: Higher quality, larger files (recommended for high-DPI displays)"
         )
         # Set the current selection based on config
@@ -598,8 +619,8 @@ class GalleryGeneratorApp(QMainWindow):
         self.chk_lazy_loading = QCheckBox("Enable lazy loading (recommended for large galleries)")
         self.chk_lazy_loading.setChecked(self.lazy_loading_pref)
         self.chk_lazy_loading.setToolTip(
-            "When enabled, images load progressively as you scroll (better performance).\n"
-            "When disabled, all images load immediately (may be slow for large galleries).\n"
+            "When enabled, images load progressively as you scroll (better performance).\n" +
+            "When disabled, all images load immediately (may be slow for large galleries).\n" +
             "Recommended: ON for galleries with 50+ images, OFF for small galleries."
         )
         _ = self.chk_lazy_loading.stateChanged.connect(self.on_lazy_loading_pref_changed)
@@ -644,7 +665,7 @@ class GalleryGeneratorApp(QMainWindow):
         _ = menu.exec_(self.cmb_root.mapToGlobal(position))
 
     @log_function
-    def delete_cached_directory(self, checked=False):
+    def delete_cached_directory(self, _checked=False):
         current_dir = str(self.cmb_root.currentText()).strip()
         if current_dir in self.cached_root_dirs:
             reply = QMessageBox.question(
@@ -656,7 +677,7 @@ class GalleryGeneratorApp(QMainWindow):
             )
             if reply == QMessageBox.StandardButton.Yes:
                 self.cached_root_dirs.remove(current_dir)
-                save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
+                save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
                 index = self.cmb_root.findText(current_dir)
                 if index != -1:
                     _ = self.cmb_root.blockSignals(True)
@@ -692,7 +713,7 @@ class GalleryGeneratorApp(QMainWindow):
             logger.warning(f"Attempted to delete a non-cached directory: {current_dir}")
 
     @log_function
-    def on_root_dir_changed(self, index):
+    def on_root_dir_changed(self, _index):
         selected_dir = str(self.cmb_root.currentText()).strip()
         if selected_dir and selected_dir not in self.cached_root_dirs:
             self.update_cached_dirs(selected_dir)
@@ -703,7 +724,7 @@ class GalleryGeneratorApp(QMainWindow):
     def update_cached_dirs(self, new_dir):
         if new_dir and new_dir not in self.cached_root_dirs:
             self.cached_root_dirs.append(new_dir)
-            save_config(new_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
+            save_config(new_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
             logger.info(f"Added new directory to cached slate directories: {new_dir}")
 
     def on_browse_root(self):
@@ -724,7 +745,7 @@ class GalleryGeneratorApp(QMainWindow):
     def open_manage_directories_dialog(self):
         """Open a dialog to manage saved directories."""
         if not self.cached_root_dirs:
-            QMessageBox.information(
+            _ = QMessageBox.information(
                 self,
                 "No Directories",
                 "No saved directories to manage.",
@@ -766,6 +787,7 @@ class GalleryGeneratorApp(QMainWindow):
                         self.generate_thumbnails_pref,
                         self.thumbnail_size,
                         self.lazy_loading_pref,
+                        self.exclude_patterns_pref,
                     )
                     index = self.cmb_root.findText(current_dir)
                     if index != -1:
@@ -808,7 +830,7 @@ class GalleryGeneratorApp(QMainWindow):
                 logger.info(f"Loaded slates from cache for directory: {self.current_root_dir}")
             else:
                 # Start scan thread
-                self.scan_thread = ScanThread(root_path, self.cache_manager)
+                self.scan_thread = ScanThread(root_path, self.cache_manager)  # pyright: ignore[reportArgumentType]
                 _ = self.scan_thread.scan_complete.connect(self.on_scan_complete)
                 _ = self.scan_thread.progress.connect(self.on_scan_progress)
                 self.scan_thread.start()
@@ -884,26 +906,53 @@ class GalleryGeneratorApp(QMainWindow):
     @log_function
     def apply_filters(self):
         filter_text = str(self.txt_filter.text()).strip().lower()
+        exclude_pattern = str(self.txt_exclude.text()).strip()
 
-        # Early exit for empty filter - show all slates
-        if not filter_text:
-            self.filtered_slates = self.slates_dict.copy()
-        else:
-            # Optimized filtering with pre-computed lowercase slate names
-            self.filtered_slates = {}
-            for slate, data in self.slates_dict.items():
-                slate_lower = slate.lower()  # Only compute once per slate
-                if filter_text in slate_lower:
-                    self.filtered_slates[slate] = data
+        # Save exclude pattern preference if it changed
+        if exclude_pattern != self.exclude_patterns_pref:
+            self.exclude_patterns_pref = exclude_pattern
+            save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
 
+        # Start with all slates
+        filtered = self.slates_dict.copy()
+
+        # Apply inclusion filter if text is present
+        if filter_text:
+            filtered = {
+                slate: data
+                for slate, data in filtered.items()
+                if filter_text in slate.lower()
+            }
+
+        # Apply exclusion filter if pattern is present
+        if exclude_pattern:
+            # Split by comma to support multiple patterns
+            exclude_patterns = [p.strip() for p in exclude_pattern.split(',') if p.strip()]
+            filtered = {
+                slate: data
+                for slate, data in filtered.items()
+                if not any(fnmatch.fnmatch(slate.lower(), pattern.lower()) for pattern in exclude_patterns)
+            }
+
+        self.filtered_slates = filtered
         self.populate_slates_list()
-        logger.info(f"Filtered slates based on filter text: '{filter_text}'")
+        logger.info(f"Filtered slates - filter: '{filter_text}', exclude: '{exclude_pattern}', result: {len(filtered)} slates")
 
     @log_function
     def populate_slates_list(self):
         self.list_slates.clear()
         for slate in sorted(self.filtered_slates.keys()):
             self.list_slates.addItem(slate)
+
+        # Update filter count label
+        filtered_count = len(self.filtered_slates)
+        total_count = len(self.slates_dict)
+        if filtered_count == total_count:
+            self.lbl_filter_count.setText(f"Showing all {total_count} slates")
+        else:
+            filtered_out = total_count - filtered_count
+            self.lbl_filter_count.setText(f"Showing {filtered_count} of {total_count} slates ({filtered_out} filtered out)")
+
         logger.debug(f"Populated slates list with {self.list_slates.count()} slates.")
 
     def on_select_all(self):
@@ -940,7 +989,7 @@ class GalleryGeneratorApp(QMainWindow):
             reply = QMessageBox.question(
                 self,
                 "Confirm Refresh",
-                "This will re-scan the directory and clear your current selections.\n\n"
+                "This will re-scan the directory and clear your current selections.\n\n" +
                 "Are you sure you want to continue?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
@@ -962,7 +1011,7 @@ class GalleryGeneratorApp(QMainWindow):
             self.list_slates.clear()
 
             # Start scan thread to re-scan and update cache
-            self.scan_thread = ScanThread(root_path, self.cache_manager)
+            self.scan_thread = ScanThread(root_path, self.cache_manager)  # pyright: ignore[reportArgumentType]
             _ = self.scan_thread.scan_complete.connect(self.on_scan_complete)
             _ = self.scan_thread.progress.connect(self.on_scan_progress)
             self.scan_thread.start()
@@ -1019,7 +1068,7 @@ class GalleryGeneratorApp(QMainWindow):
             self.gallery_thread = GenerateGalleryThread(
                 selected_slates=selected_slates,
                 slates_dict=self.slates_dict,
-                cache_manager=self.cache_manager,
+                cache_manager=self.cache_manager,  # pyright: ignore[reportArgumentType]
                 output_dir=output,
                 root_dir=self.current_root_dir,
                 template_path=template_path,
@@ -1079,7 +1128,7 @@ class GalleryGeneratorApp(QMainWindow):
         self.generate_thumbnails_pref = self.chk_generate_thumbnails.isChecked()
         # Enable/disable size dropdown based on checkbox state
         self.combo_thumbnail_size.setEnabled(self.generate_thumbnails_pref)
-        save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
+        save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
 
     def on_thumbnail_size_changed(self, text):
         """Save thumbnail size preference when dropdown changes."""
@@ -1089,7 +1138,7 @@ class GalleryGeneratorApp(QMainWindow):
                 size_str = text.split('x')[0].strip()
                 try:
                     self.thumbnail_size = int(size_str)
-                    save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
+                    save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
                     logger.info(f"Thumbnail size changed to: {self.thumbnail_size}")
                 except ValueError:
                     logger.error(f"Invalid thumbnail size format: {text}")
@@ -1099,7 +1148,7 @@ class GalleryGeneratorApp(QMainWindow):
     def on_lazy_loading_pref_changed(self):
         """Save lazy loading preference when checkbox state changes."""
         self.lazy_loading_pref = self.chk_lazy_loading.isChecked()
-        save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
+        save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
         logger.info(f"Lazy loading preference changed to: {self.lazy_loading_pref}")
 
     @override
@@ -1123,7 +1172,7 @@ class GalleryGeneratorApp(QMainWindow):
 
             # Save configuration
             root_dir = str(self.cmb_root.currentText()).strip()
-            save_config(root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
+            save_config(root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
 
             event.accept()
             logger.info("Application closed.")

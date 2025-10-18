@@ -126,7 +126,7 @@ def get_orientation(image_path: str, exif_data: dict[str, object]) -> str:
 
 
 @log_function
-def scan_directories(root_dir: str) -> dict[str, dict[str, list[str]]]:
+def scan_directories(root_dir: str, exclude_patterns: str = "") -> dict[str, dict[str, list[str]]]:
     # QString is no longer needed in PySide6, using native Python strings
     root_dir = str(root_dir)
 
@@ -137,13 +137,43 @@ def scan_directories(root_dir: str) -> dict[str, dict[str, list[str]]]:
         logger.error(f"Slate directory does not exist: {root_dir}")
         return slates
 
-    for dirpath, _dirnames, filenames in os.walk(root_dir, followlinks=False):
+    # Parse exclude patterns (comma or semicolon separated)
+    import fnmatch
+    patterns = []
+    if exclude_patterns:
+        # Split by comma or semicolon and strip whitespace
+        raw_patterns = [p.strip() for p in exclude_patterns.replace(';', ',').split(',')]
+        # Filter out empty patterns
+        patterns = [p for p in raw_patterns if p]
+        logger.info(f"Applying exclude patterns: {patterns}")
+
+    def should_exclude(path: str) -> bool:
+        """Check if path matches any exclude pattern (case-insensitive)"""
+        if not patterns:
+            return False
+        path_lower = path.lower()
+        for pattern in patterns:
+            # Case-insensitive match
+            if fnmatch.fnmatch(path_lower, pattern.lower()):
+                logger.debug(f"Excluding {path} (matched pattern: {pattern})")
+                return True
+        return False
+
+    for dirpath, dirnames, filenames in os.walk(root_dir, followlinks=False):
+        # Filter out excluded directories (modifying dirnames in-place prevents os.walk from descending)
+        dirnames[:] = [d for d in dirnames if not should_exclude(d)]
+
         logger.info(f"Scanning directory: {dirpath}")
         images_in_dir = []
         for f in filenames:
             # Skip macOS resource fork files (._*)
             if f.startswith("._"):
                 continue
+
+            # Skip if matches exclude pattern
+            if should_exclude(f):
+                continue
+
             if os.path.splitext(f)[1].lower() in image_extensions:
                 images_in_dir.append(f)
 

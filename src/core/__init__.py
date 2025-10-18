@@ -13,11 +13,11 @@ from .image_processor import scan_directories as _scan_directories
 
 
 # Re-export with proper type annotations
-def load_config() -> tuple[str, list[str], bool, int, bool]:
+def load_config() -> tuple[str, list[str], bool, int, bool, str]:
     """Load configuration from ~/.slate_gallery/config.ini.
 
     Returns:
-        Tuple of (current_slate_dir, slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading)
+        Tuple of (current_slate_dir, slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns)
     """
     return _load_config()
 
@@ -27,7 +27,8 @@ def save_config(
     slate_dirs: list[str],
     generate_thumbnails: bool = False,
     thumbnail_size: int = 600,
-    lazy_loading: bool = True
+    lazy_loading: bool = True,
+    exclude_patterns: str = ""
 ) -> None:
     """Save configuration to ~/.slate_gallery/config.ini.
 
@@ -37,8 +38,9 @@ def save_config(
         generate_thumbnails: Whether to generate thumbnails
         thumbnail_size: Thumbnail size (600, 800, or 1200)
         lazy_loading: Whether to enable lazy loading in gallery
+        exclude_patterns: Patterns to exclude from slate list (comma-separated wildcards)
     """
-    _save_config(current_slate_dir, slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading)
+    _save_config(current_slate_dir, slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns)
 
 
 def generate_html_gallery(

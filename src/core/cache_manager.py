@@ -5,7 +5,7 @@ import json
 import os
 import threading
 from collections.abc import Callable, Sequence
-from typing import Any, Optional
+from typing import Optional
 
 from utils.logging_config import log_function, logger
 
@@ -22,7 +22,7 @@ class ImprovedCacheManager:
         self.max_workers: int = max_workers
         self.batch_size: int = batch_size
         self._cache_lock: threading.Lock = threading.Lock()
-        self._metadata: dict[str, Any] = {}
+        self._metadata: dict[str, object] = {}
         self._processing: set[str] = set()
 
         self.ensure_directories()
@@ -45,14 +45,14 @@ class ImprovedCacheManager:
         return os.path.join(self.cache_dir, f"{dir_hash}.json")
 
     @log_function
-    def load_cache(self, root_dir: str) -> Optional[dict[str, Any]]:
+    def load_cache(self, root_dir: str) -> Optional[dict[str, object]]:
         cache_file = self.get_cache_file(root_dir)
         if os.path.exists(cache_file):
             try:
                 with open(cache_file) as f:
-                    slates: dict[str, Any] = json.load(f)
+                    slates = json.load(f)
                 logger.info(f"Loaded slates from cache for directory: {root_dir}")
-                return slates
+                return slates  # type: ignore[return-value]
             except Exception as e:
                 logger.error(f"Error loading cache for {root_dir}: {e}", exc_info=True)
                 return None
@@ -61,7 +61,7 @@ class ImprovedCacheManager:
             return None
 
     @log_function
-    def save_cache(self, root_dir: str, slates: dict[str, Any]) -> None:
+    def save_cache(self, root_dir: str, slates: dict[str, object]) -> None:
         cache_file = self.get_cache_file(root_dir)
         try:
             with open(cache_file, "w") as f:
@@ -72,11 +72,11 @@ class ImprovedCacheManager:
 
     @log_function
     def process_images_batch(
-        self, image_paths: Sequence[str], callback: Optional[Callable[..., Any]] = None
-    ) -> list[dict[str, str]]:
+        self, image_paths: Sequence[object], callback: Optional[Callable[[int], None]] = None
+    ) -> list[dict[str, object]]:
         logger.info(f"Processing batch of {len(image_paths)} images for scanning.")
 
-        return [{"path": path} for path in image_paths]
+        return [{"path": str(path)} for path in image_paths]
 
     @log_function
     def shutdown(self) -> None:
