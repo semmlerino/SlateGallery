@@ -687,7 +687,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const checkbox = img.parentElement.querySelector('.select-checkbox');
             if (checkbox) {
                 checkbox.checked = !checkbox.checked;
-                checkbox.dispatchEvent(new Event('change'));
+                checkbox.dispatchEvent(new Event('change', { bubbles: true }));
             }
         }
     });
