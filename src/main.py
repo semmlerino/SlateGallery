@@ -19,15 +19,15 @@ sys.path.insert(0, str(os.path.dirname(os.path.abspath(__file__))))
 # Qt imports
 from PySide6 import QtWidgets
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QCheckBox,
     QComboBox,
     QFileDialog,
+    QGraphicsDropShadowEffect,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -47,6 +47,41 @@ from core.config_manager import load_config, save_config
 # Import from our new modular structure
 from utils.logging_config import log_function, logger
 from utils.threading import GenerateGalleryThread, ScanThread
+
+# ----------------------------- Design Tokens -----------------------------
+
+# Spacing (reduced for tighter layout)
+SPACING_XS = 2
+SPACING_SM = 4
+SPACING_MD = 8
+SPACING_LG = 12
+SPACING_XL = 16
+
+# Color Palette (softer, closer to original)
+COLOR_PRIMARY = "#A5D6A7"           # Light green - primary actions (Generate)
+COLOR_PRIMARY_HOVER = "#81C784"
+COLOR_PRIMARY_PRESSED = "#66BB6A"
+COLOR_PRIMARY_TEXT = "#1B5E20"
+
+COLOR_SECONDARY = "#90CAF9"         # Light blue - secondary actions (Scan)
+COLOR_SECONDARY_HOVER = "#64B5F6"
+COLOR_SECONDARY_TEXT = "#1A237E"
+
+COLOR_TERTIARY_BG = "transparent"   # Tertiary buttons
+COLOR_TERTIARY_BORDER = "#BDBDBD"
+COLOR_TERTIARY_HOVER = "#F5F5F5"
+COLOR_TERTIARY_TEXT = "#424242"
+
+COLOR_SURFACE = "#FFFFFF"           # Card backgrounds
+COLOR_BACKGROUND = "#FAFAFA"        # Main background (lighter)
+COLOR_BORDER = "#E0E0E0"
+
+COLOR_TEXT_PRIMARY = "#37474F"
+COLOR_TEXT_SECONDARY = "#78909C"
+COLOR_TEXT_DISABLED = "#9E9E9E"
+
+COLOR_SUCCESS = "#A5D6A7"           # Light green
+COLOR_WARNING = "#FFB74D"           # Light orange
 
 # ----------------------------- Custom File Dialog -----------------------------
 
@@ -79,6 +114,39 @@ class CustomFileDialog(QFileDialog):
         path = str(path)
         self.path_input.setText(path)
         logger.debug(f"Directory changed to: {path}")
+
+
+# ----------------------------- Card Widget -----------------------------
+
+
+class CardWidget(QWidget):
+    """Modern card widget with optional title and shadow effect."""
+
+    def __init__(self, title="", parent=None):
+        super().__init__(parent)
+        self.setObjectName("card")
+
+        # Main layout
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(SPACING_LG, SPACING_LG, SPACING_LG, SPACING_LG)
+        layout.setSpacing(SPACING_MD)
+
+        # Optional title
+        if title:
+            title_label = QLabel(title)
+            title_label.setObjectName("cardTitle")
+            layout.addWidget(title_label)
+
+        # Content layout (exposed for adding widgets)
+        self.content_layout = QVBoxLayout()
+        layout.addLayout(self.content_layout)
+
+        # Add very subtle shadow effect
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(8)
+        shadow.setOffset(0, 1)
+        shadow.setColor(QColor(0, 0, 0, 10))  # Very light shadow
+        self.setGraphicsEffect(shadow)
 
 
 # ----------------------------- Main Application -----------------------------
@@ -128,89 +196,200 @@ class GalleryGeneratorApp(QMainWindow):
             if cached_slates:
                 self.slates_dict = cached_slates
                 self.apply_filters()
-                self.update_status("Loaded slates from cache.")
-                # Note: Progress bar stays at 0 - it only shows progress during active operations
+                self.update_status(f"Loaded {len(cached_slates)} collections from cache (ready to generate)")
+                self.progress_bar.setValue(100)
             else:
-                self.update_status("No cache found. Please scan directories.")
+                self.update_status("No cache found. Please scan directory.")
 
     def setup_style(self):
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #FAFAFA;
-            }
-            QPushButton {
-                background-color: #90CAF9;
-                color: #1A237E;
+        self.setStyleSheet(f"""
+            /* Main Window */
+            QMainWindow {{
+                background-color: {COLOR_BACKGROUND};
+            }}
+
+            /* Card Widgets */
+            #card {{
+                background-color: {COLOR_SURFACE};
+                border: 1px solid {COLOR_BORDER};
+                border-radius: 8px;
+            }}
+
+            #cardTitle {{
+                color: {COLOR_TEXT_PRIMARY};
+                font-size: 14px;
+                font-weight: 600;
+                margin-bottom: {SPACING_SM}px;
+            }}
+
+            /* Button System - Primary (Main Actions) */
+            #primaryButton {{
+                background-color: {COLOR_PRIMARY};
+                color: {COLOR_PRIMARY_TEXT};
                 border: none;
-                padding: 8px;
-                border-radius: 4px;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #64B5F6;
-            }
-            QPushButton:pressed {
-                background-color: #42A5F5;
-            }
-            QPushButton:disabled {
-                background-color: #E0E0E0;
-                color: #9E9E9E;
-            }
-            QLabel {
-                color: #37474F;
-                font-weight: bold;
-            }
-            QLineEdit, QComboBox {
-                padding: 6px;
-                border: 1px solid #E0E0E0;
-                border-radius: 4px;
-                background-color: white;
-                color: #424242;
-            }
-            QListWidget {
-                border: 1px solid #E0E0E0;
-                border-radius: 4px;
-                background-color: white;
-                padding: 5px;
-            }
-            QListWidget::item {
-                padding: 5px;
-                border-radius: 2px;
-            }
-            QListWidget::item:selected {
-                background-color: #E3F2FD;
-                color: #1565C0;
-            }
-            QListWidget::item:hover {
-                background-color: #F5F5F5;
-            }
-            QProgressBar {
-                border: 1px solid #E0E0E0;
-                border-radius: 4px;
-                background-color: #FAFAFA;
-                text-align: center;
-            }
-            QProgressBar::chunk {
-                background-color: #90CAF9;
-                border-radius: 3px;
-            }
-            QGroupBox {
-                background-color: white;
-                border: 1px solid #E0E0E0;
                 border-radius: 6px;
-                margin-top: 12px;
-                padding-top: 12px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-                color: #1976D2;
-            }
-            QCheckBox {
+                padding: {SPACING_MD}px {SPACING_LG}px;
+                font-size: 14px;
                 font-weight: bold;
-                color: #37474F;
-            }
+                min-width: 120px;
+            }}
+
+            #primaryButton:hover {{
+                background-color: {COLOR_PRIMARY_HOVER};
+            }}
+
+            #primaryButton:pressed {{
+                background-color: {COLOR_PRIMARY_PRESSED};
+            }}
+
+            #primaryButton:disabled {{
+                background-color: {COLOR_BORDER};
+                color: {COLOR_TEXT_DISABLED};
+            }}
+
+            /* Button System - Secondary (Less Important Actions) */
+            #secondaryButton {{
+                background-color: {COLOR_SECONDARY};
+                color: {COLOR_SECONDARY_TEXT};
+                border: none;
+                border-radius: 6px;
+                padding: {SPACING_SM}px {SPACING_MD}px;
+                font-size: 14px;
+                font-weight: bold;
+                min-width: 100px;
+            }}
+
+            #secondaryButton:hover {{
+                background-color: {COLOR_SECONDARY_HOVER};
+            }}
+
+            #secondaryButton:pressed {{
+                background-color: #90CAF9;
+            }}
+
+            #secondaryButton:disabled {{
+                background-color: {COLOR_BORDER};
+                color: {COLOR_TEXT_DISABLED};
+            }}
+
+            /* Button System - Tertiary (Minimal Actions) */
+            #tertiaryButton {{
+                background-color: {COLOR_TERTIARY_BG};
+                color: {COLOR_TERTIARY_TEXT};
+                border: 1px solid {COLOR_TERTIARY_BORDER};
+                border-radius: 4px;
+                padding: {SPACING_SM}px {SPACING_MD}px;
+                font-size: 13px;
+                font-weight: normal;
+                min-width: 80px;
+            }}
+
+            #tertiaryButton:hover {{
+                background-color: {COLOR_TERTIARY_HOVER};
+            }}
+
+            #tertiaryButton:pressed {{
+                background-color: {COLOR_SECONDARY};
+            }}
+
+            #tertiaryButton:disabled {{
+                border-color: {COLOR_BORDER};
+                color: {COLOR_TEXT_DISABLED};
+            }}
+
+            /* Labels */
+            QLabel {{
+                color: {COLOR_TEXT_PRIMARY};
+                font-size: 13px;
+                font-weight: 500;
+            }}
+
+            #instructionLabel {{
+                color: {COLOR_TEXT_SECONDARY};
+                font-size: 12px;
+                font-weight: normal;
+                margin-bottom: {SPACING_SM}px;
+            }}
+
+            /* Input Fields */
+            QLineEdit, QComboBox {{
+                padding: {SPACING_SM}px {SPACING_MD}px;
+                border: 1px solid {COLOR_BORDER};
+                border-radius: 4px;
+                background-color: {COLOR_SURFACE};
+                color: {COLOR_TEXT_PRIMARY};
+                font-size: 13px;
+            }}
+
+            QLineEdit:focus, QComboBox:focus {{
+                border-color: {COLOR_PRIMARY};
+                outline: none;
+            }}
+
+            QLineEdit:disabled, QComboBox:disabled {{
+                background-color: {COLOR_BACKGROUND};
+                color: {COLOR_TEXT_DISABLED};
+            }}
+
+            /* List Widget */
+            QListWidget {{
+                border: 2px solid {COLOR_BORDER};
+                border-radius: 6px;
+                background-color: {COLOR_SURFACE};
+                padding: {SPACING_SM}px;
+                font-size: 13px;
+            }}
+
+            QListWidget::item {{
+                padding: {SPACING_SM}px;
+                border-radius: 4px;
+                margin: 2px 0;
+            }}
+
+            QListWidget::item:selected {{
+                background-color: {COLOR_SECONDARY};
+                color: {COLOR_PRIMARY};
+            }}
+
+            QListWidget::item:hover {{
+                background-color: {COLOR_BACKGROUND};
+            }}
+
+            /* Progress Bar */
+            QProgressBar {{
+                border: 2px solid {COLOR_BORDER};
+                border-radius: 6px;
+                background-color: {COLOR_BACKGROUND};
+                text-align: center;
+                height: 24px;
+                font-size: 12px;
+                font-weight: 500;
+            }}
+
+            QProgressBar::chunk {{
+                background-color: {COLOR_PRIMARY};
+                border-radius: 4px;
+            }}
+
+            /* Checkboxes */
+            QCheckBox {{
+                font-size: 13px;
+                font-weight: 500;
+                color: {COLOR_TEXT_PRIMARY};
+                spacing: {SPACING_SM}px;
+            }}
+
+            QCheckBox::indicator {{
+                width: 18px;
+                height: 18px;
+                border: 2px solid {COLOR_BORDER};
+                border-radius: 4px;
+            }}
+
+            QCheckBox::indicator:checked {{
+                background-color: {COLOR_PRIMARY};
+                border-color: {COLOR_PRIMARY};
+            }}
         """)
 
     def initUI(self):
@@ -220,19 +399,21 @@ class GalleryGeneratorApp(QMainWindow):
 
         # Main layout with margins
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(SPACING_LG, SPACING_LG, SPACING_LG, SPACING_LG)
+        main_layout.setSpacing(SPACING_MD)
         central_widget.setLayout(main_layout)
 
-        dir_group = QGroupBox("Directory Selection")
+        # Directory Selection Card
+        dir_card = CardWidget("Directory Selection")
         dir_layout = QGridLayout()
-        dir_group.setLayout(dir_layout)
+        dir_layout.setSpacing(SPACING_SM)
 
-        lbl_root = QLabel("Slate Directory:")
+        lbl_root = QLabel("Photo Directory:")
         dir_layout.addWidget(lbl_root, 0, 0)
 
         self.cmb_root = QComboBox()
         self.cmb_root.setEditable(True)  # Allow manual input
+        self.cmb_root.setToolTip("Select or enter the path to your photo directory")
         self.cmb_root.addItems(self.cached_root_dirs)
         current_index = self.cmb_root.findText(self.current_root_dir)
         if current_index != -1:
@@ -249,110 +430,105 @@ class GalleryGeneratorApp(QMainWindow):
         dir_layout.addWidget(self.cmb_root, 0, 1)
 
         btn_browse_root = QPushButton("Browse")
+        btn_browse_root.setObjectName("tertiaryButton")
         _ = btn_browse_root.clicked.connect(self.on_browse_root)
         dir_layout.addWidget(btn_browse_root, 0, 2)
+
+        btn_manage = QPushButton("Manage...")
+        btn_manage.setObjectName("tertiaryButton")
+        btn_manage.setToolTip("Manage saved directories")
+        _ = btn_manage.clicked.connect(self.open_manage_directories_dialog)
+        dir_layout.addWidget(btn_manage, 0, 3)
 
         dir_layout.setColumnStretch(0, 0)
         dir_layout.setColumnStretch(1, 1)
         dir_layout.setColumnStretch(2, 0)
+        dir_layout.setColumnStretch(3, 0)
 
-        main_layout.addWidget(dir_group)
+        dir_card.content_layout.addLayout(dir_layout)
+        main_layout.addWidget(dir_card)
 
         # Scan button
-        btn_scan = QPushButton("Scan Directories and List Slates")
-        btn_scan.setStyleSheet("""
-            QPushButton {
-                background-color: #90CAF9;
-                color: #1A237E;
-                font-weight: bold;
-                padding: 10px;
-            }
-            QPushButton:hover {
-                background-color: #64B5F6;
-            }
-        """)
+        btn_scan = QPushButton("Scan Directory")
+        btn_scan.setObjectName("secondaryButton")
+        btn_scan.setToolTip("Scan the selected directory for photo collections")
         _ = btn_scan.clicked.connect(self.on_scan)
         main_layout.addWidget(btn_scan)
 
-        # Filter group
-        filter_group = QGroupBox("Slate Selection")
-        filter_layout = QVBoxLayout()
-        filter_group.setLayout(filter_layout)
+        # Photo Collection Selection Card
+        selection_card = CardWidget("Photo Collection Selection")
+
+        # Instruction label
+        instruction_label = QLabel("Select one or more collections (Ctrl+Click for multiple):")
+        instruction_label.setObjectName("instructionLabel")
+        selection_card.content_layout.addWidget(instruction_label)
 
         # Filter input
         filter_input_layout = QHBoxLayout()
-        lbl_filter = QLabel("Filter Slates:")
+        filter_input_layout.setSpacing(SPACING_SM)
+        lbl_filter = QLabel("Filter:")
         filter_input_layout.addWidget(lbl_filter)
 
         self.txt_filter = QLineEdit()
+        self.txt_filter.setPlaceholderText("Type to filter collections...")
         _ = self.txt_filter.textChanged.connect(self.on_filter)
         filter_input_layout.addWidget(self.txt_filter)
 
-        filter_layout.addLayout(filter_input_layout)
+        selection_card.content_layout.addLayout(filter_input_layout)
 
         # List and buttons layout
         list_buttons_layout = QHBoxLayout()
+        list_buttons_layout.setSpacing(SPACING_MD)
 
-        # Slates list
+        # Collections list
         self.list_slates = QListWidget()
         self.list_slates.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+        self.list_slates.setMinimumHeight(200)
+        self.list_slates.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Expanding
+        )
         list_buttons_layout.addWidget(self.list_slates)
 
         # Selection buttons
         selection_buttons_layout = QVBoxLayout()
+        selection_buttons_layout.setSpacing(SPACING_SM)
 
         btn_select_all = QPushButton("Select All")
+        btn_select_all.setObjectName("tertiaryButton")
         _ = btn_select_all.clicked.connect(self.on_select_all)
         selection_buttons_layout.addWidget(btn_select_all)
 
         btn_deselect_all = QPushButton("Deselect All")
+        btn_deselect_all.setObjectName("tertiaryButton")
         _ = btn_deselect_all.clicked.connect(self.on_deselect_all)
         selection_buttons_layout.addWidget(btn_deselect_all)
 
         # Add Refresh button
         btn_refresh = QPushButton("Refresh")
+        btn_refresh.setObjectName("tertiaryButton")
+        btn_refresh.setToolTip("Warning: This will re-scan the directory and clear current selections")
         _ = btn_refresh.clicked.connect(self.on_refresh)
-
-        # Apply custom stylesheet for the Refresh button
-        btn_refresh.setStyleSheet("""
-            QPushButton {
-                background-color: #1565C0;  /* Dark Blue background */
-                color: white;               /* White text */
-                border: none;
-                padding: 8px;
-                border-radius: 4px;
-                min-width: 80px;
-            }
-            QPushButton:hover {
-                background-color: #0D47A1;  /* Darker blue on hover */
-            }
-            QPushButton:pressed {
-                background-color: #0A3888;  /* Even darker on press */
-            }
-            QPushButton:disabled {
-                background-color: #E0E0E0;  /* Gray background when disabled */
-                color: #9E9E9E;             /* Gray text when disabled */
-            }
-        """)
-
         selection_buttons_layout.addWidget(btn_refresh)
 
         selection_buttons_layout.addStretch()
         list_buttons_layout.addLayout(selection_buttons_layout)
 
-        filter_layout.addLayout(list_buttons_layout)
-        main_layout.addWidget(filter_group)
+        selection_card.content_layout.addLayout(list_buttons_layout)
+        main_layout.addWidget(selection_card)
 
-        # Add thumbnail generation option with size selector
-        thumbnail_widget = QWidget()
-        thumbnail_layout = QHBoxLayout(thumbnail_widget)
-        thumbnail_layout.setContentsMargins(0, 0, 0, 0)
+        # Gallery Options Card
+        options_card = CardWidget("Gallery Options")
+
+        # Thumbnail generation option with size selector
+        thumbnail_layout = QHBoxLayout()
+        thumbnail_layout.setSpacing(SPACING_SM)
 
         self.chk_generate_thumbnails = QCheckBox("Generate thumbnails for faster loading")
-        self.chk_generate_thumbnails.setChecked(self.generate_thumbnails_pref)  # Load from config
+        self.chk_generate_thumbnails.setChecked(self.generate_thumbnails_pref)
         self.chk_generate_thumbnails.setToolTip(
-            "When enabled, creates optimized thumbnails for faster gallery loading.\n" +
-            "Uses parallel processing for 5-10x faster generation.\n" +
+            "When enabled, creates optimized thumbnails for faster gallery loading.\n"
+            "Uses parallel processing for 5-10x faster generation.\n"
             "When disabled, uses original full-resolution images (slower but no processing needed)."
         )
         _ = self.chk_generate_thumbnails.stateChanged.connect(self.on_thumbnail_pref_changed)
@@ -362,9 +538,9 @@ class GalleryGeneratorApp(QMainWindow):
         self.combo_thumbnail_size = QComboBox()
         self.combo_thumbnail_size.addItems(["600x600", "800x800", "1200x1200"])
         self.combo_thumbnail_size.setToolTip(
-            "Select the thumbnail resolution:\n" +
-            "• 600x600: Smallest files, fastest loading (recommended for web)\n" +
-            "• 800x800: Balanced quality and file size\n" +
+            "Select the thumbnail resolution:\n"
+            "• 600x600: Smallest files, fastest loading (recommended for web)\n"
+            "• 800x800: Balanced quality and file size\n"
             "• 1200x1200: Higher quality, larger files (recommended for high-DPI displays)"
         )
         # Set the current selection based on config
@@ -381,56 +557,31 @@ class GalleryGeneratorApp(QMainWindow):
         thumbnail_layout.addWidget(self.combo_thumbnail_size)
         thumbnail_layout.addStretch()
 
-        main_layout.addWidget(thumbnail_widget)
+        options_card.content_layout.addLayout(thumbnail_layout)
 
-        # Add lazy loading option
+        # Lazy loading option
         self.chk_lazy_loading = QCheckBox("Enable lazy loading (recommended for large galleries)")
-        self.chk_lazy_loading.setChecked(self.lazy_loading_pref)  # Load from config
+        self.chk_lazy_loading.setChecked(self.lazy_loading_pref)
         self.chk_lazy_loading.setToolTip(
-            "When enabled, images load progressively as you scroll (better performance).\n" +
-            "When disabled, all images load immediately (may be slow for large galleries).\n" +
+            "When enabled, images load progressively as you scroll (better performance).\n"
+            "When disabled, all images load immediately (may be slow for large galleries).\n"
             "Recommended: ON for galleries with 50+ images, OFF for small galleries."
         )
         _ = self.chk_lazy_loading.stateChanged.connect(self.on_lazy_loading_pref_changed)
-        main_layout.addWidget(self.chk_lazy_loading)
+        options_card.content_layout.addWidget(self.chk_lazy_loading)
+
+        main_layout.addWidget(options_card)
 
         btn_generate = QPushButton("Generate Gallery")
-        btn_generate.setStyleSheet("""
-            QPushButton {
-                background-color: #A5D6A7;
-                color: #1B5E20;
-                font-weight: bold;
-                padding: 12px;
-            }
-            QPushButton:hover {
-                background-color: #81C784;
-            }
-            QPushButton:disabled {
-                background-color: #E0E0E0;
-                color: #9E9E9E;
-            }
-        """)
+        btn_generate.setObjectName("primaryButton")
+        btn_generate.setToolTip("Generate HTML gallery from selected collections")
         _ = btn_generate.clicked.connect(self.on_generate)
         main_layout.addWidget(btn_generate)
 
         self.btn_generate = btn_generate
 
-        btn_open_gallery = QPushButton("Open Generated Gallery")
-        btn_open_gallery.setStyleSheet("""
-            QPushButton {
-                background-color: #FFD54F;
-                color: #BF360C;
-                font-weight: bold;
-                padding: 10px;
-            }
-            QPushButton:hover {
-                background-color: #FFB74D;
-            }
-            QPushButton:disabled {
-                background-color: #E0E0E0;
-                color: #9E9E9E;
-            }
-        """)
+        btn_open_gallery = QPushButton("Open Gallery")
+        btn_open_gallery.setObjectName("tertiaryButton")
         _ = btn_open_gallery.clicked.connect(self.on_open_gallery)
         btn_open_gallery.setEnabled(False)
         main_layout.addWidget(btn_open_gallery)
@@ -438,7 +589,7 @@ class GalleryGeneratorApp(QMainWindow):
         self.btn_open_gallery = btn_open_gallery
 
         status_layout = QHBoxLayout()
-        self.lbl_status = QLabel("Idle")
+        self.lbl_status = QLabel("Select a photo directory and click 'Scan Directory' to begin")
         status_layout.addWidget(self.lbl_status)
 
         self.progress_bar = QProgressBar()
@@ -532,6 +683,59 @@ class GalleryGeneratorApp(QMainWindow):
         except Exception as e:
             self.update_status(f"Error in slate directory selection: {e}")
             logger.error(f"Error in slate directory selection: {e}", exc_info=True)
+
+    @log_function
+    def open_manage_directories_dialog(self):
+        """Open a dialog to manage saved directories."""
+        if not self.cached_root_dirs:
+            QMessageBox.information(
+                self,
+                "No Directories",
+                "No saved directories to manage.",
+                QMessageBox.StandardButton.Ok,
+            )
+            return
+
+        # Create dialog
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Manage Directories")
+        dialog.setText("Saved Photo Directories:")
+        dialog.setInformativeText("\n".join(self.cached_root_dirs))
+        dialog.setIcon(QMessageBox.Icon.Information)
+        dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+
+        # Add custom "Remove Current" button if there's more than one directory
+        remove_btn = None
+        if len(self.cached_root_dirs) > 1:
+            remove_btn = dialog.addButton("Remove Current", QMessageBox.ButtonRole.ActionRole)
+
+        _ = dialog.exec()
+
+        # Handle removal if button was clicked
+        if remove_btn and dialog.clickedButton() == remove_btn:
+            current_dir = str(self.cmb_root.currentText()).strip()
+            if current_dir in self.cached_root_dirs:
+                reply = QMessageBox.question(
+                    self,
+                    "Remove Directory",
+                    f"Remove this directory from the list?\n\n{current_dir}",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    self.cached_root_dirs.remove(current_dir)
+                    save_config(
+                        self.current_root_dir,
+                        self.cached_root_dirs,
+                        self.generate_thumbnails_pref,
+                        self.thumbnail_size,
+                        self.lazy_loading_pref,
+                    )
+                    index = self.cmb_root.findText(current_dir)
+                    if index != -1:
+                        self.cmb_root.removeItem(index)
+                    logger.info(f"Removed directory from cache: {current_dir}")
+                    self.update_status(f"Removed directory: {current_dir}")
 
     def on_scan(self):
         try:
@@ -689,6 +893,20 @@ class GalleryGeneratorApp(QMainWindow):
             if not os.path.isdir(root_path):
                 self.update_status("The specified slate directory does not exist.")
                 logger.error(f"The specified slate directory does not exist: {root_path}")
+                return
+
+            # Confirm before refreshing
+            reply = QMessageBox.question(
+                self,
+                "Confirm Refresh",
+                "This will re-scan the directory and clear your current selections.\n\n"
+                "Are you sure you want to continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+
+            if reply != QMessageBox.StandardButton.Yes:
+                logger.info("Refresh cancelled by user")
                 return
 
             self.current_root_dir = root_path
@@ -877,39 +1095,40 @@ def main():
         app = QApplication(sys.argv)
 
         # Set application-wide stylesheet for dialogs
-        app.setStyleSheet("""
-            QMessageBox {
-                background-color: #FFFFFF;
-            }
-            QMessageBox QLabel {
-                color: #424242;
-            }
-            QMessageBox QPushButton {
-                background-color: #90CAF9;
-                color: #1A237E;
+        app.setStyleSheet(f"""
+            QMessageBox {{
+                background-color: {COLOR_SURFACE};
+            }}
+            QMessageBox QLabel {{
+                color: {COLOR_TEXT_PRIMARY};
+            }}
+            QMessageBox QPushButton {{
+                background-color: {COLOR_SECONDARY};
+                color: {COLOR_PRIMARY};
                 border: none;
-                padding: 5px 15px;
-                border-radius: 3px;
+                padding: {SPACING_SM}px {SPACING_MD}px;
+                border-radius: 6px;
                 min-width: 80px;
-            }
-            QMessageBox QPushButton:hover {
-                background-color: #64B5F6;
-            }
-            QFileDialog {
-                background-color: #FFFFFF;
-            }
-            QFileDialog QTreeView {
-                background-color: #FFFFFF;
-                border: 1px solid #E0E0E0;
-                border-radius: 4px;
-            }
-            QFileDialog QTreeView::item:selected {
-                background-color: #E3F2FD;
-                color: #1565C0;
-            }
-            QFileDialog QTreeView::item:hover {
-                background-color: #F5F5F5;
-            }
+                font-weight: 500;
+            }}
+            QMessageBox QPushButton:hover {{
+                background-color: {COLOR_SECONDARY_HOVER};
+            }}
+            QFileDialog {{
+                background-color: {COLOR_SURFACE};
+            }}
+            QFileDialog QTreeView {{
+                background-color: {COLOR_SURFACE};
+                border: 2px solid {COLOR_BORDER};
+                border-radius: 6px;
+            }}
+            QFileDialog QTreeView::item:selected {{
+                background-color: {COLOR_SECONDARY};
+                color: {COLOR_PRIMARY};
+            }}
+            QFileDialog QTreeView::item:hover {{
+                background-color: {COLOR_BACKGROUND};
+            }}
         """)
 
         window = GalleryGeneratorApp()
