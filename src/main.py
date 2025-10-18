@@ -455,13 +455,14 @@ class GalleryGeneratorApp(QMainWindow):
         dir_card.content_layout.addLayout(dir_layout)
         main_layout.addWidget(dir_card)
 
-        # Photo Collection Selection Card
-        selection_card = CardWidget("Photo Collection Selection")
+        # Slates Card
+        selection_card = CardWidget()  # No card title
 
-        # Instruction label
-        instruction_label = QLabel("Select one or more collections (Ctrl+Click for multiple):")
-        instruction_label.setObjectName("instructionLabel")
-        selection_card.content_layout.addWidget(instruction_label)
+        # Centered "Slates" title
+        slates_title = QLabel("Slates")
+        slates_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        slates_title.setStyleSheet("font-size: 16px; font-weight: 600; margin-bottom: 8px;")
+        selection_card.content_layout.addWidget(slates_title)
 
         # Filter input
         filter_input_layout = QHBoxLayout()
