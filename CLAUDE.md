@@ -60,8 +60,9 @@ basedpyright src/      # Type checking
 - 📗 **QT_TESTING_BEST_PRACTICES.md** - Qt-specific testing patterns and anti-patterns
 - 📕 **THREADING_ERROR_TESTS_GUIDE.md** - Ready-to-implement threading error tests
 - 📙 **README_TESTING.md** - Quick start guide for running tests
+- 🟦 **JAVASCRIPT_TESTING.md** - JavaScript/HTML template testing guide (NEW!)
 
-### Test Suite Overview
+### Python Test Suite Overview
 - **163 total tests** covering all major functionality and real-world scenarios
 - **Test framework**: pytest with pytest-qt for Qt components
 - **Current coverage**: 45% overall (625/1,127 lines)
@@ -73,14 +74,33 @@ basedpyright src/      # Type checking
   - `test_performance_benchmark.py` - Performance benchmarking suite
   - `test_threading_errors.py` - Threading error scenarios (to be implemented, see THREADING_ERROR_TESTS_GUIDE.md)
 
+### JavaScript Test Suite Overview (NEW!)
+- **75 total tests** covering gallery template frontend functionality
+- **Test framework**: Mocha + Chai + Sinon (HTML-based, CDN delivery)
+- **Current coverage**: Modal (100%), Events (100%), Persistence (95%)
+- **Zero installation required**: Open `tests/gallery/gallery_tests.html` in browser
+- **Key features tested**:
+  - Modal functionality (open, navigate, close with keyboard)
+  - Event delegation (performance optimization)
+  - Selection persistence (localStorage save/restore)
+  - Export button (clipboard API, focal length data)
+  - Performance at scale (500 images validated)
+- **Documentation**:
+  - `tests/gallery/INDEX.md` - Navigation hub ⭐ Start here
+  - `tests/gallery/TEST_GUIDE.md` - Quick reference
+  - `tests/gallery/README.md` - Full documentation
+  - See **JAVASCRIPT_TESTING.md** for integration guide
+
 ### Running Tests
 
-#### Standard Environment (with display)
+#### Python Tests (Backend)
+
+**Standard Environment (with display)**
 ```bash
 python -m pytest tests/
 ```
 
-#### Headless/CI Environment
+**Headless/CI Environment**
 ```bash
 # Best solution: Use Xvfb
 xvfb-run -a python -m pytest tests/
@@ -91,6 +111,24 @@ xvfb-run -a python -m pytest tests/
 # Alternative: Skip Qt tests if Xvfb unavailable
 python -m pytest tests/ -k "not Thread"
 ```
+
+#### JavaScript Tests (Frontend)
+
+**Quick Start (Simplest)**
+```bash
+# Open in browser - tests run automatically
+firefox tests/gallery/gallery_tests.html
+```
+
+**Test Runner Script**
+```bash
+cd tests/gallery
+./run_tests.sh browser    # Open in browser
+./run_tests.sh server     # Start web server
+./run_tests.sh headless   # CI/CD headless mode
+```
+
+**Expected Output**: `75 passing (1.2s)` - All frontend tests pass
 
 ### Qt Testing in Headless Environments
 

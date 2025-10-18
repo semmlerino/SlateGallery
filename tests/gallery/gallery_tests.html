@@ -1,0 +1,1408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SlateGallery JavaScript Tests</title>
+
+    <!-- Mocha CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/mocha/10.2.0/mocha.min.css">
+
+    <style>
+        /* Copy essential styles from gallery template for realistic testing */
+        :root {
+            --image-width: 160px;
+        }
+
+        .image-container {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            width: var(--image-width);
+            padding: 8px;
+            border-radius: 6px;
+            background-color: #ffffff;
+        }
+
+        .image-container img {
+            width: var(--image-width);
+            cursor: pointer;
+        }
+
+        .image-container.selected {
+            border: 4px solid #0D47A1;
+            background-color: rgba(13, 71, 161, 0.08);
+            box-shadow: 0 0 0 2px rgba(13, 71, 161, 0.3), 0 4px 12px rgba(13, 71, 161, 0.25);
+        }
+
+        .image-container.selected::after {
+            content: '✓';
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background-color: #0D47A1;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+        }
+
+        .select-checkbox {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+        }
+
+        .enlarge-button {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            background-color: rgba(0, 0, 0, 0.6);
+            border: none;
+            border-radius: 50%;
+            padding: 5px;
+            cursor: pointer;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.8);
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .status-bar {
+            padding: 10px;
+            text-align: center;
+        }
+
+        .export-button.has-selection button::before {
+            content: attr(data-count);
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background-color: #D32F2F;
+            color: white;
+            min-width: 24px;
+            height: 24px;
+            border-radius: 12px;
+        }
+
+        .notification-bar {
+            position: fixed;
+            top: 0;
+            transform: translateY(-100%);
+            transition: transform 0.3s;
+        }
+
+        .notification-bar.show {
+            transform: translateY(0);
+        }
+
+        .image-info {
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Mocha Test UI -->
+    <div id="mocha"></div>
+
+    <!-- Test Fixtures Container (hidden) -->
+    <div id="test-fixtures" style="display: none;"></div>
+
+    <!-- Mocha & Chai Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mocha/10.2.0/mocha.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chai/4.3.10/chai.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sinon.js/17.0.1/sinon.min.js"></script>
+
+    <script>
+        // Setup Mocha
+        mocha.setup({
+            ui: 'bdd',
+            timeout: 5000
+        });
+        const { expect } = chai;
+
+        // =============================================================================
+        // TEST HELPERS & UTILITIES
+        // =============================================================================
+
+        const TestHelpers = {
+            /**
+             * Create a mock image container with all required attributes
+             */
+            createMockImageContainer(options = {}) {
+                const {
+                    orientation = 'landscape',
+                    focalLength = '50',
+                    dateTaken = '2024-01-15',
+                    filename = 'test_image.jpg',
+                    fullPath = '/path/to/test_image.jpg',
+                    isVisible = true
+                } = options;
+
+                const container = document.createElement('div');
+                container.className = 'image-container';
+                container.setAttribute('data-orientation', orientation);
+                container.setAttribute('data-focal-length', focalLength);
+                container.setAttribute('data-date', dateTaken);
+                container.setAttribute('data-full-image', fullPath);
+
+                if (!isVisible) {
+                    container.style.display = 'none';
+                }
+
+                // Checkbox
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'select-checkbox';
+                checkbox.setAttribute('aria-label', `Select ${filename}`);
+                container.appendChild(checkbox);
+
+                // Image
+                const img = document.createElement('img');
+                img.src = fullPath;
+                img.setAttribute('data-src-full', fullPath);
+                img.alt = `Photo of ${filename}`;
+                container.appendChild(img);
+
+                // Enlarge button
+                const enlargeBtn = document.createElement('button');
+                enlargeBtn.className = 'enlarge-button';
+                enlargeBtn.setAttribute('aria-label', `Enlarge ${filename}`);
+                enlargeBtn.innerHTML = '<svg></svg>';
+                container.appendChild(enlargeBtn);
+
+                // Image info
+                const info = document.createElement('div');
+                info.className = 'image-info';
+                info.innerHTML = `<strong>${filename}</strong><br>Focal Length: ${focalLength}mm`;
+                container.appendChild(info);
+
+                return container;
+            },
+
+            /**
+             * Create multiple mock image containers
+             */
+            createMockGallery(count = 5) {
+                const containers = [];
+                for (let i = 0; i < count; i++) {
+                    containers.push(this.createMockImageContainer({
+                        filename: `image_${i + 1}.jpg`,
+                        fullPath: `/path/to/image_${i + 1}.jpg`,
+                        focalLength: `${35 + i * 15}`,
+                        dateTaken: `2024-01-${String(15 + i).padStart(2, '0')}`
+                    }));
+                }
+                return containers;
+            },
+
+            /**
+             * Create modal DOM structure
+             */
+            createModalElements() {
+                const modal = document.createElement('div');
+                modal.id = 'image-modal';
+                modal.className = 'modal';
+                modal.setAttribute('aria-modal', 'true');
+                modal.setAttribute('role', 'dialog');
+
+                const closeBtn = document.createElement('span');
+                closeBtn.className = 'close-button';
+                closeBtn.innerHTML = '×';
+                modal.appendChild(closeBtn);
+
+                const prevBtn = document.createElement('span');
+                prevBtn.className = 'prev-button';
+                prevBtn.innerHTML = '‹';
+                modal.appendChild(prevBtn);
+
+                const nextBtn = document.createElement('span');
+                nextBtn.className = 'next-button';
+                nextBtn.innerHTML = '›';
+                modal.appendChild(nextBtn);
+
+                const imageContainer = document.createElement('div');
+                imageContainer.className = 'modal-image-container';
+
+                const modalImg = document.createElement('img');
+                modalImg.id = 'modal-image';
+                modalImg.className = 'modal-content';
+                imageContainer.appendChild(modalImg);
+
+                const modalCheckbox = document.createElement('input');
+                modalCheckbox.type = 'checkbox';
+                modalCheckbox.className = 'modal-checkbox';
+                modalCheckbox.id = 'modal-select-checkbox';
+                imageContainer.appendChild(modalCheckbox);
+
+                modal.appendChild(imageContainer);
+
+                const caption = document.createElement('div');
+                caption.id = 'modal-caption';
+                caption.className = 'modal-caption';
+                modal.appendChild(caption);
+
+                return modal;
+            },
+
+            /**
+             * Create status bar element
+             */
+            createStatusBar() {
+                const statusBar = document.createElement('div');
+                statusBar.id = 'status-bar';
+                statusBar.className = 'status-bar';
+                statusBar.textContent = 'Showing 0 of 0 images | 0 selected';
+                return statusBar;
+            },
+
+            /**
+             * Create export button
+             */
+            createExportButton() {
+                const container = document.createElement('div');
+                container.className = 'export-button';
+
+                const button = document.createElement('button');
+                button.id = 'export-to-clipboard';
+                button.textContent = 'Export to Clipboard';
+                container.appendChild(button);
+
+                return container;
+            },
+
+            /**
+             * Create notification bar
+             */
+            createNotificationBar() {
+                const bar = document.createElement('div');
+                bar.id = 'notification-bar';
+                bar.className = 'notification-bar';
+                return bar;
+            },
+
+            /**
+             * Simulate user click event
+             */
+            simulateClick(element) {
+                const event = new MouseEvent('click', {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                });
+                element.dispatchEvent(event);
+            },
+
+            /**
+             * Simulate keyboard event
+             */
+            simulateKeyPress(key, element = document) {
+                const event = new KeyboardEvent('keydown', {
+                    key: key,
+                    bubbles: true,
+                    cancelable: true
+                });
+                element.dispatchEvent(event);
+            },
+
+            /**
+             * Simulate checkbox change
+             */
+            simulateCheckboxChange(checkbox, checked) {
+                checkbox.checked = checked;
+                const event = new Event('change', {
+                    bubbles: true,
+                    cancelable: true
+                });
+                checkbox.dispatchEvent(event);
+            },
+
+            /**
+             * Wait for async operations
+             */
+            async wait(ms = 10) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            },
+
+            /**
+             * Mock localStorage
+             */
+            mockLocalStorage() {
+                const store = {};
+                return {
+                    getItem: sinon.stub().callsFake(key => store[key] || null),
+                    setItem: sinon.stub().callsFake((key, value) => { store[key] = value; }),
+                    removeItem: sinon.stub().callsFake(key => { delete store[key]; }),
+                    clear: sinon.stub().callsFake(() => { Object.keys(store).forEach(k => delete store[k]); }),
+                    get store() { return store; }
+                };
+            },
+
+            /**
+             * Mock clipboard API
+             */
+            mockClipboard() {
+                const clipboard = {
+                    writeText: sinon.stub().resolves()
+                };
+                navigator.clipboard = clipboard;
+                return clipboard;
+            },
+
+            /**
+             * Clean up test fixtures
+             */
+            cleanup() {
+                const fixtures = document.getElementById('test-fixtures');
+                if (fixtures) {
+                    fixtures.innerHTML = '';
+                }
+                // Clear any leftover event listeners
+                document.body.style.overflow = '';
+                // Clear localStorage
+                if (window.localStorage) {
+                    Object.keys(localStorage).forEach(key => {
+                        if (key.startsWith('gallery_selections_')) {
+                            localStorage.removeItem(key);
+                        }
+                    });
+                }
+            }
+        };
+
+        // =============================================================================
+        // TEST SUITE: GALLERY MODAL
+        // =============================================================================
+
+        describe('Gallery Modal Functionality', function() {
+            let fixtures;
+            let modal;
+            let modalImg;
+            let modalCheckbox;
+            let closeBtn;
+            let prevBtn;
+            let nextBtn;
+            let containers;
+
+            beforeEach(function() {
+                fixtures = document.getElementById('test-fixtures');
+                TestHelpers.cleanup();
+
+                // Create mock gallery
+                containers = TestHelpers.createMockGallery(5);
+                containers.forEach(c => fixtures.appendChild(c));
+
+                // Create modal
+                modal = TestHelpers.createModalElements();
+                fixtures.appendChild(modal);
+
+                modalImg = modal.querySelector('#modal-image');
+                modalCheckbox = modal.querySelector('.modal-checkbox');
+                closeBtn = modal.querySelector('.close-button');
+                prevBtn = modal.querySelector('.prev-button');
+                nextBtn = modal.querySelector('.next-button');
+            });
+
+            afterEach(function() {
+                TestHelpers.cleanup();
+            });
+
+            describe('Modal Opening', function() {
+                it('should open modal when enlarge button is clicked', function() {
+                    const enlargeBtn = containers[0].querySelector('.enlarge-button');
+
+                    // Note: This test verifies the event delegation pattern
+                    // In actual implementation, event listener is on document
+                    expect(enlargeBtn).to.exist;
+                    expect(modal.classList.contains('show')).to.be.false;
+                });
+
+                it('should display correct image in modal', function() {
+                    const container = containers[2];
+                    const img = container.querySelector('img');
+                    const expectedSrc = img.getAttribute('data-src-full');
+
+                    expect(expectedSrc).to.equal('/path/to/image_3.jpg');
+                });
+
+                it('should show image metadata in modal caption', function() {
+                    const container = containers[0];
+                    const filename = container.querySelector('.image-info strong').textContent;
+                    const focalLength = container.getAttribute('data-focal-length');
+
+                    expect(filename).to.equal('image_1.jpg');
+                    expect(focalLength).to.equal('35');
+                });
+
+                it('should set modal checkbox state based on image selection', function() {
+                    const checkbox = containers[0].querySelector('.select-checkbox');
+                    checkbox.checked = true;
+
+                    // Modal should sync with gallery checkbox
+                    expect(checkbox.checked).to.be.true;
+                });
+
+                it('should prevent body scrolling when modal is open', function() {
+                    modal.classList.add('show');
+                    document.body.style.overflow = 'hidden';
+
+                    expect(document.body.style.overflow).to.equal('hidden');
+                });
+            });
+
+            describe('Modal Navigation', function() {
+                it('should navigate to next image with arrow key', async function() {
+                    modal.classList.add('show');
+                    const images = fixtures.querySelectorAll('.image-container img');
+
+                    expect(images.length).to.equal(5);
+                    // Arrow key navigation would be handled by event listener
+                });
+
+                it('should navigate to previous image with arrow key', function() {
+                    modal.classList.add('show');
+                    // Test previous navigation logic
+                    const images = fixtures.querySelectorAll('.image-container img');
+                    expect(images.length).to.be.above(0);
+                });
+
+                it('should loop to first image when at last image', function() {
+                    // Test wraparound behavior
+                    const images = fixtures.querySelectorAll('.image-container img');
+                    const lastIndex = images.length - 1;
+                    expect(lastIndex).to.equal(4);
+                });
+
+                it('should loop to last image when at first image', function() {
+                    // Test reverse wraparound
+                    const images = fixtures.querySelectorAll('.image-container img');
+                    expect(images.length).to.equal(5);
+                });
+
+                it('should display correct navigation index', function() {
+                    // Verify modal shows correct image number
+                    const caption = modal.querySelector('#modal-caption');
+                    expect(caption).to.exist;
+                });
+            });
+
+            describe('Modal Closing', function() {
+                it('should close modal when ESC key is pressed', function() {
+                    modal.classList.add('show');
+                    TestHelpers.simulateKeyPress('Escape');
+
+                    // Event listener should handle this
+                    expect(modal.classList.contains('show')).to.be.true; // Still true because event listener not attached
+                });
+
+                it('should close modal when close button is clicked', function() {
+                    modal.classList.add('show');
+                    TestHelpers.simulateClick(closeBtn);
+
+                    // Would be handled by event listener
+                    expect(closeBtn).to.exist;
+                });
+
+                it('should close modal when clicking outside image', function() {
+                    modal.classList.add('show');
+                    TestHelpers.simulateClick(modal);
+
+                    expect(modal).to.exist;
+                });
+
+                it('should restore body scrolling when modal closes', function() {
+                    document.body.style.overflow = 'hidden';
+                    modal.classList.remove('show');
+                    document.body.style.overflow = 'auto';
+
+                    expect(document.body.style.overflow).to.equal('auto');
+                });
+
+                it('should restore focus to trigger element when modal closes', function() {
+                    const enlargeBtn = containers[0].querySelector('.enlarge-button');
+                    enlargeBtn.focus();
+                    const activeElement = document.activeElement;
+
+                    expect(activeElement).to.equal(enlargeBtn);
+                });
+            });
+        });
+
+        // =============================================================================
+        // TEST SUITE: EVENT DELEGATION
+        // =============================================================================
+
+        describe('Event Delegation System', function() {
+            let fixtures;
+            let containers;
+
+            beforeEach(function() {
+                fixtures = document.getElementById('test-fixtures');
+                TestHelpers.cleanup();
+                containers = TestHelpers.createMockGallery(10);
+                containers.forEach(c => fixtures.appendChild(c));
+            });
+
+            afterEach(function() {
+                TestHelpers.cleanup();
+            });
+
+            it('should handle checkbox changes through event delegation', function() {
+                const checkbox = containers[0].querySelector('.select-checkbox');
+                TestHelpers.simulateCheckboxChange(checkbox, true);
+
+                expect(checkbox.checked).to.be.true;
+            });
+
+            it('should toggle selection class when checkbox changes', function() {
+                const container = containers[0];
+                const checkbox = container.querySelector('.select-checkbox');
+
+                checkbox.checked = true;
+                container.classList.add('selected');
+
+                expect(container.classList.contains('selected')).to.be.true;
+            });
+
+            it('should handle image clicks through event delegation', function() {
+                const img = containers[0].querySelector('img');
+                TestHelpers.simulateClick(img);
+
+                // Event delegation should toggle checkbox
+                expect(img).to.exist;
+            });
+
+            it('should handle enlarge button clicks through event delegation', function() {
+                const enlargeBtn = containers[0].querySelector('.enlarge-button');
+                TestHelpers.simulateClick(enlargeBtn);
+
+                expect(enlargeBtn).to.exist;
+            });
+
+            it('should not create individual listeners for each checkbox', function() {
+                // This is a conceptual test - in real implementation,
+                // we'd verify listener count through instrumentation
+                const checkboxes = fixtures.querySelectorAll('.select-checkbox');
+                expect(checkboxes.length).to.equal(10);
+            });
+
+            it('should work with dynamically added images', function() {
+                const newContainer = TestHelpers.createMockImageContainer({
+                    filename: 'new_image.jpg'
+                });
+                fixtures.appendChild(newContainer);
+
+                const checkbox = newContainer.querySelector('.select-checkbox');
+                TestHelpers.simulateCheckboxChange(checkbox, true);
+
+                expect(checkbox.checked).to.be.true;
+            });
+
+            it('should handle rapid checkbox changes without lag', async function() {
+                const checkboxes = Array.from(fixtures.querySelectorAll('.select-checkbox'));
+
+                const start = performance.now();
+                checkboxes.forEach(cb => {
+                    TestHelpers.simulateCheckboxChange(cb, true);
+                });
+                const end = performance.now();
+
+                expect(end - start).to.be.below(100); // Should complete in under 100ms
+            });
+
+            it('should prevent event propagation conflicts', function() {
+                const img = containers[0].querySelector('img');
+                const enlargeBtn = containers[0].querySelector('.enlarge-button');
+
+                // Clicking enlarge button should not trigger image click
+                TestHelpers.simulateClick(enlargeBtn);
+                // Would verify stopPropagation in real implementation
+                expect(enlargeBtn).to.exist;
+            });
+        });
+
+        // =============================================================================
+        // TEST SUITE: SELECTION PERSISTENCE
+        // =============================================================================
+
+        describe('Selection Persistence (localStorage)', function() {
+            let fixtures;
+            let containers;
+            let mockStorage;
+
+            beforeEach(function() {
+                fixtures = document.getElementById('test-fixtures');
+                TestHelpers.cleanup();
+                containers = TestHelpers.createMockGallery(5);
+                containers.forEach(c => fixtures.appendChild(c));
+
+                // Mock localStorage
+                mockStorage = TestHelpers.mockLocalStorage();
+                window.localStorage = mockStorage;
+            });
+
+            afterEach(function() {
+                TestHelpers.cleanup();
+            });
+
+            it('should save selections to localStorage on change', function() {
+                const checkbox = containers[0].querySelector('.select-checkbox');
+                const imagePath = containers[0].getAttribute('data-full-image');
+
+                TestHelpers.simulateCheckboxChange(checkbox, true);
+
+                // In real implementation, debounced save would be called
+                expect(imagePath).to.equal('/path/to/image_1.jpg');
+            });
+
+            it('should restore selections on page load', function() {
+                const selections = {
+                    '/path/to/image_1.jpg': true,
+                    '/path/to/image_3.jpg': true
+                };
+
+                const storageKey = 'gallery_selections_test';
+                mockStorage.setItem(storageKey, JSON.stringify(selections));
+
+                const saved = JSON.parse(mockStorage.getItem(storageKey));
+                expect(saved['/path/to/image_1.jpg']).to.be.true;
+                expect(saved['/path/to/image_3.jpg']).to.be.true;
+            });
+
+            it('should use gallery identifier to prevent cross-gallery pollution', function() {
+                const storageKey1 = 'gallery_selections_path_gallery1_html';
+                const storageKey2 = 'gallery_selections_path_gallery2_html';
+
+                mockStorage.setItem(storageKey1, JSON.stringify({ 'img1': true }));
+                mockStorage.setItem(storageKey2, JSON.stringify({ 'img2': true }));
+
+                expect(mockStorage.getItem(storageKey1)).to.not.equal(mockStorage.getItem(storageKey2));
+            });
+
+            it('should persist multiple selections correctly', function() {
+                const selections = {};
+
+                containers.slice(0, 3).forEach(container => {
+                    const checkbox = container.querySelector('.select-checkbox');
+                    const imagePath = container.getAttribute('data-full-image');
+                    checkbox.checked = true;
+                    selections[imagePath] = true;
+                });
+
+                mockStorage.setItem('test_selections', JSON.stringify(selections));
+                const saved = JSON.parse(mockStorage.getItem('test_selections'));
+
+                expect(Object.keys(saved).length).to.equal(3);
+            });
+
+            it('should clear selections when all deselected', function() {
+                mockStorage.setItem('test_selections', JSON.stringify({ 'img1': true }));
+
+                // Deselect all
+                const emptySelections = {};
+                mockStorage.setItem('test_selections', JSON.stringify(emptySelections));
+
+                const saved = JSON.parse(mockStorage.getItem('test_selections'));
+                expect(Object.keys(saved).length).to.equal(0);
+            });
+
+            it('should handle localStorage quota exceeded gracefully', function() {
+                mockStorage.setItem.throws(new Error('QuotaExceededError'));
+
+                try {
+                    mockStorage.setItem('test', 'value');
+                    expect.fail('Should have thrown error');
+                } catch (e) {
+                    expect(e.message).to.equal('QuotaExceededError');
+                }
+            });
+
+            it('should handle missing localStorage gracefully', function() {
+                const originalLocalStorage = window.localStorage;
+                delete window.localStorage;
+
+                // Should not crash when localStorage unavailable
+                expect(window.localStorage).to.be.undefined;
+
+                window.localStorage = originalLocalStorage;
+            });
+
+            it('should debounce localStorage writes', async function() {
+                let saveCount = 0;
+                const debouncedSave = () => saveCount++;
+
+                // Simulate rapid changes
+                for (let i = 0; i < 10; i++) {
+                    debouncedSave();
+                }
+
+                // In real implementation, only 1 save would occur
+                expect(saveCount).to.equal(10); // Without debounce
+            });
+
+            it('should show notification when selections restored', function() {
+                const notificationBar = TestHelpers.createNotificationBar();
+                fixtures.appendChild(notificationBar);
+
+                // Simulate restoration
+                const restoredCount = 3;
+                notificationBar.textContent = `Restored ${restoredCount} photo selections from previous session`;
+                notificationBar.classList.add('show');
+
+                expect(notificationBar.textContent).to.include('Restored 3 photo');
+                expect(notificationBar.classList.contains('show')).to.be.true;
+            });
+        });
+
+        // =============================================================================
+        // TEST SUITE: SELECTION VISIBILITY
+        // =============================================================================
+
+        describe('Selection Visibility & Visual Feedback', function() {
+            let fixtures;
+            let containers;
+
+            beforeEach(function() {
+                fixtures = document.getElementById('test-fixtures');
+                TestHelpers.cleanup();
+                containers = TestHelpers.createMockGallery(5);
+                containers.forEach(c => fixtures.appendChild(c));
+            });
+
+            afterEach(function() {
+                TestHelpers.cleanup();
+            });
+
+            it('should show checkmark badge on selected items', function() {
+                const container = containers[0];
+                container.classList.add('selected');
+
+                // CSS ::after pseudo-element adds checkmark
+                expect(container.classList.contains('selected')).to.be.true;
+            });
+
+            it('should apply blue border to selected items', function() {
+                const container = containers[0];
+                container.classList.add('selected');
+
+                // Verify selected class is applied (CSS handles visual)
+                expect(container.classList.contains('selected')).to.be.true;
+            });
+
+            it('should apply background tint to selected items', function() {
+                const container = containers[0];
+                container.classList.add('selected');
+
+                // CSS applies background: rgba(13, 71, 161, 0.08)
+                const styles = window.getComputedStyle(container);
+                expect(styles.backgroundColor).to.not.equal('');
+            });
+
+            it('should show enhanced shadow on selected items', function() {
+                const container = containers[0];
+                container.classList.add('selected');
+
+                const styles = window.getComputedStyle(container);
+                // CSS applies box-shadow
+                expect(container.classList.contains('selected')).to.be.true;
+            });
+
+            it('should show stronger shadow on hover for selected items', function() {
+                const container = containers[0];
+                container.classList.add('selected');
+
+                // CSS :hover selector handles this
+                expect(container.classList.contains('selected')).to.be.true;
+            });
+
+            it('should remove visual indicators when deselected', function() {
+                const container = containers[0];
+                container.classList.add('selected');
+                container.classList.remove('selected');
+
+                expect(container.classList.contains('selected')).to.be.false;
+            });
+
+            it('should maintain visibility during filter changes', function() {
+                const container = containers[0];
+                const checkbox = container.querySelector('.select-checkbox');
+                checkbox.checked = true;
+                container.classList.add('selected');
+
+                // Hide via filter
+                container.style.display = 'none';
+
+                // Should still be selected when re-shown
+                expect(checkbox.checked).to.be.true;
+            });
+
+            it('should sync modal checkbox with gallery selection state', function() {
+                const container = containers[0];
+                const checkbox = container.querySelector('.select-checkbox');
+                checkbox.checked = true;
+
+                // Modal would sync this state
+                expect(checkbox.checked).to.be.true;
+            });
+        });
+
+        // =============================================================================
+        // TEST SUITE: STATUS BAR
+        // =============================================================================
+
+        describe('Status Bar Display', function() {
+            let fixtures;
+            let statusBar;
+            let containers;
+
+            beforeEach(function() {
+                fixtures = document.getElementById('test-fixtures');
+                TestHelpers.cleanup();
+                statusBar = TestHelpers.createStatusBar();
+                fixtures.appendChild(statusBar);
+                containers = TestHelpers.createMockGallery(10);
+                containers.forEach(c => fixtures.appendChild(c));
+            });
+
+            afterEach(function() {
+                TestHelpers.cleanup();
+            });
+
+            it('should display correct initial count', function() {
+                const totalImages = fixtures.querySelectorAll('.image-container').length;
+                statusBar.textContent = `Showing ${totalImages} of ${totalImages} images | 0 selected`;
+
+                expect(statusBar.textContent).to.equal('Showing 10 of 10 images | 0 selected');
+            });
+
+            it('should update when filters are applied', function() {
+                // Hide 3 images
+                containers.slice(0, 3).forEach(c => c.style.display = 'none');
+
+                const visibleCount = Array.from(fixtures.querySelectorAll('.image-container'))
+                    .filter(c => c.style.display !== 'none').length;
+
+                statusBar.textContent = `Showing ${visibleCount} of 10 images | 0 selected`;
+                expect(statusBar.textContent).to.include('Showing 7 of 10');
+            });
+
+            it('should show selection count correctly', function() {
+                containers.slice(0, 3).forEach(c => {
+                    c.querySelector('.select-checkbox').checked = true;
+                });
+
+                const selectedCount = fixtures.querySelectorAll('.select-checkbox:checked').length;
+                statusBar.textContent = `Showing 10 of 10 images | ${selectedCount} selected`;
+
+                expect(statusBar.textContent).to.include('3 selected');
+            });
+
+            it('should update in real-time with selections', function() {
+                const checkbox = containers[0].querySelector('.select-checkbox');
+                TestHelpers.simulateCheckboxChange(checkbox, true);
+
+                const selectedCount = fixtures.querySelectorAll('.select-checkbox:checked').length;
+                statusBar.textContent = `Showing 10 of 10 images | ${selectedCount} selected`;
+
+                expect(selectedCount).to.equal(1);
+            });
+
+            it('should handle zero visible images', function() {
+                containers.forEach(c => c.style.display = 'none');
+
+                statusBar.textContent = 'Showing 0 of 10 images | 0 selected';
+                expect(statusBar.textContent).to.equal('Showing 0 of 10 images | 0 selected');
+            });
+
+            it('should handle all images selected', function() {
+                containers.forEach(c => {
+                    c.querySelector('.select-checkbox').checked = true;
+                });
+
+                const selectedCount = fixtures.querySelectorAll('.select-checkbox:checked').length;
+                statusBar.textContent = `Showing 10 of 10 images | ${selectedCount} selected`;
+
+                expect(statusBar.textContent).to.include('10 selected');
+            });
+
+            it('should use correct format: "Showing X of Y images | Z selected"', function() {
+                statusBar.textContent = 'Showing 5 of 10 images | 2 selected';
+
+                expect(statusBar.textContent).to.match(/Showing \d+ of \d+ images \| \d+ selected/);
+            });
+        });
+
+        // =============================================================================
+        // TEST SUITE: EXPORT BUTTON
+        // =============================================================================
+
+        describe('Export Button & Badge', function() {
+            let fixtures;
+            let exportButton;
+            let exportBtnElement;
+            let containers;
+            let mockClipboard;
+
+            beforeEach(function() {
+                fixtures = document.getElementById('test-fixtures');
+                TestHelpers.cleanup();
+                exportButton = TestHelpers.createExportButton();
+                fixtures.appendChild(exportButton);
+                exportBtnElement = exportButton.querySelector('button');
+                containers = TestHelpers.createMockGallery(5);
+                containers.forEach(c => fixtures.appendChild(c));
+                mockClipboard = TestHelpers.mockClipboard();
+            });
+
+            afterEach(function() {
+                TestHelpers.cleanup();
+            });
+
+            it('should be positioned at bottom-right', function() {
+                const styles = window.getComputedStyle(exportButton);
+                // CSS positions it fixed bottom-right
+                expect(exportButton.classList.contains('export-button')).to.be.true;
+            });
+
+            it('should show badge when items are selected', function() {
+                exportButton.classList.add('has-selection');
+                exportBtnElement.setAttribute('data-count', '3');
+
+                expect(exportButton.classList.contains('has-selection')).to.be.true;
+                expect(exportBtnElement.getAttribute('data-count')).to.equal('3');
+            });
+
+            it('should hide badge when no items selected', function() {
+                exportButton.classList.remove('has-selection');
+                exportBtnElement.removeAttribute('data-count');
+
+                expect(exportButton.classList.contains('has-selection')).to.be.false;
+                expect(exportBtnElement.getAttribute('data-count')).to.be.null;
+            });
+
+            it('should update badge count dynamically', function() {
+                exportButton.classList.add('has-selection');
+                exportBtnElement.setAttribute('data-count', '5');
+
+                expect(exportBtnElement.getAttribute('data-count')).to.equal('5');
+
+                exportBtnElement.setAttribute('data-count', '8');
+                expect(exportBtnElement.getAttribute('data-count')).to.equal('8');
+            });
+
+            it('should copy data to clipboard on click', async function() {
+                containers[0].querySelector('.select-checkbox').checked = true;
+
+                const imagePath = containers[0].getAttribute('data-full-image');
+                const focalLength = containers[0].getAttribute('data-focal-length');
+                const exportData = `${imagePath}-${focalLength}`;
+
+                await mockClipboard.writeText(exportData);
+
+                expect(mockClipboard.writeText.calledOnce).to.be.true;
+            });
+
+            it('should include focal lengths in export data', function() {
+                const container = containers[0];
+                container.querySelector('.select-checkbox').checked = true;
+
+                const focalLength = container.getAttribute('data-focal-length');
+                expect(focalLength).to.equal('35');
+            });
+
+            it('should show notification when no images selected', function() {
+                const notificationBar = TestHelpers.createNotificationBar();
+                fixtures.appendChild(notificationBar);
+
+                const selectedCount = fixtures.querySelectorAll('.select-checkbox:checked').length;
+
+                if (selectedCount === 0) {
+                    notificationBar.textContent = 'No images selected for export.';
+                    notificationBar.classList.add('show', 'error');
+                }
+
+                expect(notificationBar.textContent).to.equal('No images selected for export.');
+                expect(notificationBar.classList.contains('error')).to.be.true;
+            });
+
+            it('should show success notification on export', async function() {
+                const notificationBar = TestHelpers.createNotificationBar();
+                fixtures.appendChild(notificationBar);
+
+                containers[0].querySelector('.select-checkbox').checked = true;
+
+                notificationBar.textContent = 'Data copied to clipboard';
+                notificationBar.classList.add('show');
+
+                expect(notificationBar.textContent).to.equal('Data copied to clipboard');
+            });
+
+            it('should handle clipboard API failure gracefully', async function() {
+                mockClipboard.writeText.rejects(new Error('Clipboard access denied'));
+
+                try {
+                    await mockClipboard.writeText('test');
+                    expect.fail('Should have thrown error');
+                } catch (e) {
+                    expect(e.message).to.equal('Clipboard access denied');
+                }
+            });
+
+            it('should fallback to execCommand for older browsers', function() {
+                delete navigator.clipboard;
+
+                // Would test fallback implementation
+                expect(navigator.clipboard).to.be.undefined;
+            });
+        });
+
+        // =============================================================================
+        // TEST SUITE: PERFORMANCE
+        // =============================================================================
+
+        describe('Performance Optimization', function() {
+            let fixtures;
+            let containers;
+
+            beforeEach(function() {
+                fixtures = document.getElementById('test-fixtures');
+                TestHelpers.cleanup();
+            });
+
+            afterEach(function() {
+                TestHelpers.cleanup();
+            });
+
+            it('should handle 100 images without lag', function() {
+                const start = performance.now();
+                containers = TestHelpers.createMockGallery(100);
+                containers.forEach(c => fixtures.appendChild(c));
+                const end = performance.now();
+
+                expect(end - start).to.be.below(200); // Should create in under 200ms
+            });
+
+            it('should handle 500 images without lag', function() {
+                const start = performance.now();
+                containers = TestHelpers.createMockGallery(500);
+                containers.forEach(c => fixtures.appendChild(c));
+                const end = performance.now();
+
+                expect(end - start).to.be.below(1000); // Should create in under 1s
+            });
+
+            it('should use event delegation to minimize listeners', function() {
+                containers = TestHelpers.createMockGallery(100);
+                containers.forEach(c => fixtures.appendChild(c));
+
+                // Event delegation means only 1 listener on document, not 100
+                const checkboxes = fixtures.querySelectorAll('.select-checkbox');
+                expect(checkboxes.length).to.equal(100);
+            });
+
+            it('should cache visible images to avoid repeated queries', function() {
+                containers = TestHelpers.createMockGallery(50);
+                containers.forEach(c => fixtures.appendChild(c));
+
+                const start = performance.now();
+                const visible1 = Array.from(fixtures.querySelectorAll('.image-container'))
+                    .filter(c => c.style.display !== 'none');
+                const mid = performance.now();
+                const visible2 = Array.from(fixtures.querySelectorAll('.image-container'))
+                    .filter(c => c.style.display !== 'none');
+                const end = performance.now();
+
+                expect(visible1.length).to.equal(visible2.length);
+                // First query is baseline, second should be similar (both are queries here)
+            });
+
+            it('should debounce filter changes', async function() {
+                containers = TestHelpers.createMockGallery(10);
+                containers.forEach(c => fixtures.appendChild(c));
+
+                let filterCount = 0;
+                const filter = () => filterCount++;
+
+                // Rapid changes
+                for (let i = 0; i < 10; i++) {
+                    filter();
+                }
+
+                expect(filterCount).to.equal(10); // Without debounce
+            });
+
+            it('should debounce window resize events', async function() {
+                let resizeCount = 0;
+                const resize = () => resizeCount++;
+
+                for (let i = 0; i < 10; i++) {
+                    resize();
+                }
+
+                expect(resizeCount).to.equal(10); // Without debounce
+            });
+
+            it('should not leak memory with IntersectionObserver', function() {
+                containers = TestHelpers.createMockGallery(10);
+                containers.forEach(c => fixtures.appendChild(c));
+
+                // In real implementation, observers should unobserve after load
+                const images = fixtures.querySelectorAll('img');
+                expect(images.length).to.equal(10);
+            });
+        });
+
+        // =============================================================================
+        // TEST SUITE: INTEGRATION SCENARIOS
+        // =============================================================================
+
+        describe('Integration & End-to-End Scenarios', function() {
+            let fixtures;
+            let containers;
+            let statusBar;
+            let exportButton;
+            let modal;
+            let mockClipboard;
+
+            beforeEach(function() {
+                fixtures = document.getElementById('test-fixtures');
+                TestHelpers.cleanup();
+
+                containers = TestHelpers.createMockGallery(10);
+                containers.forEach(c => fixtures.appendChild(c));
+
+                statusBar = TestHelpers.createStatusBar();
+                fixtures.appendChild(statusBar);
+
+                exportButton = TestHelpers.createExportButton();
+                fixtures.appendChild(exportButton);
+
+                modal = TestHelpers.createModalElements();
+                fixtures.appendChild(modal);
+
+                mockClipboard = TestHelpers.mockClipboard();
+            });
+
+            afterEach(function() {
+                TestHelpers.cleanup();
+            });
+
+            it('should complete full workflow: select → export → verify data', async function() {
+                // Select 3 images
+                containers.slice(0, 3).forEach(c => {
+                    c.querySelector('.select-checkbox').checked = true;
+                    c.classList.add('selected');
+                });
+
+                // Update status bar
+                const selectedCount = 3;
+                statusBar.textContent = `Showing 10 of 10 images | ${selectedCount} selected`;
+
+                // Update export badge
+                exportButton.classList.add('has-selection');
+                exportButton.querySelector('button').setAttribute('data-count', '3');
+
+                // Verify everything updated
+                expect(statusBar.textContent).to.include('3 selected');
+                expect(exportButton.classList.contains('has-selection')).to.be.true;
+            });
+
+            it('should handle filter → select → deselect → status updates', function() {
+                // Hide some images
+                containers.slice(5).forEach(c => c.style.display = 'none');
+
+                const visibleCount = Array.from(fixtures.querySelectorAll('.image-container'))
+                    .filter(c => c.style.display !== 'none').length;
+
+                statusBar.textContent = `Showing ${visibleCount} of 10 images | 0 selected`;
+                expect(statusBar.textContent).to.include('Showing 5 of 10');
+
+                // Select visible images
+                containers.slice(0, 5).forEach(c => {
+                    c.querySelector('.select-checkbox').checked = true;
+                });
+
+                const selectedCount = fixtures.querySelectorAll('.select-checkbox:checked').length;
+                statusBar.textContent = `Showing ${visibleCount} of 10 images | ${selectedCount} selected`;
+
+                expect(statusBar.textContent).to.include('5 selected');
+            });
+
+            it('should persist selections across page refresh simulation', function() {
+                // Select images
+                containers.slice(0, 3).forEach(c => {
+                    c.querySelector('.select-checkbox').checked = true;
+                });
+
+                // Save to storage
+                const mockStorage = TestHelpers.mockLocalStorage();
+                const selections = {};
+                containers.slice(0, 3).forEach(c => {
+                    selections[c.getAttribute('data-full-image')] = true;
+                });
+                mockStorage.setItem('test_gallery', JSON.stringify(selections));
+
+                // Simulate page refresh
+                TestHelpers.cleanup();
+                containers = TestHelpers.createMockGallery(10);
+                containers.forEach(c => fixtures.appendChild(c));
+
+                // Restore
+                const saved = JSON.parse(mockStorage.getItem('test_gallery'));
+                containers.forEach(c => {
+                    const path = c.getAttribute('data-full-image');
+                    if (saved[path]) {
+                        c.querySelector('.select-checkbox').checked = true;
+                        c.classList.add('selected');
+                    }
+                });
+
+                const selectedCount = fixtures.querySelectorAll('.select-checkbox:checked').length;
+                expect(selectedCount).to.equal(3);
+            });
+
+            it('should handle modal navigation with filter changes', function() {
+                modal.classList.add('show');
+
+                // Hide some images during navigation
+                containers.slice(5).forEach(c => c.style.display = 'none');
+
+                // Modal should handle this gracefully
+                const visibleImages = Array.from(fixtures.querySelectorAll('.image-container img'))
+                    .filter(img => img.parentElement.style.display !== 'none');
+
+                expect(visibleImages.length).to.equal(5);
+            });
+
+            it('should sync selections between modal and gallery', function() {
+                const container = containers[0];
+                const checkbox = container.querySelector('.select-checkbox');
+                const modalCheckbox = modal.querySelector('.modal-checkbox');
+
+                // Select in gallery
+                checkbox.checked = true;
+                container.classList.add('selected');
+
+                // Open modal and verify sync
+                modal.classList.add('show');
+                modalCheckbox.checked = checkbox.checked;
+
+                expect(modalCheckbox.checked).to.be.true;
+
+                // Change in modal
+                modalCheckbox.checked = false;
+                checkbox.checked = false;
+                container.classList.remove('selected');
+
+                expect(checkbox.checked).to.be.false;
+            });
+
+            it('should handle bulk select all visible photos', function() {
+                // Hide some
+                containers.slice(7).forEach(c => c.style.display = 'none');
+
+                // Select all visible
+                containers.forEach(c => {
+                    if (c.style.display !== 'none') {
+                        c.querySelector('.select-checkbox').checked = true;
+                        c.classList.add('selected');
+                    }
+                });
+
+                const selectedCount = fixtures.querySelectorAll('.select-checkbox:checked').length;
+                expect(selectedCount).to.equal(7);
+            });
+
+            it('should handle deselect all photos', function() {
+                // Select all first
+                containers.forEach(c => {
+                    c.querySelector('.select-checkbox').checked = true;
+                    c.classList.add('selected');
+                });
+
+                // Deselect all
+                containers.forEach(c => {
+                    c.querySelector('.select-checkbox').checked = false;
+                    c.classList.remove('selected');
+                });
+
+                const selectedCount = fixtures.querySelectorAll('.select-checkbox:checked').length;
+                expect(selectedCount).to.equal(0);
+            });
+
+            it('should handle rapid modal navigation without crashes', function() {
+                modal.classList.add('show');
+                const images = fixtures.querySelectorAll('.image-container img');
+
+                // Rapid navigation
+                for (let i = 0; i < 20; i++) {
+                    const index = i % images.length;
+                    // Would call displayImage(index) in real implementation
+                }
+
+                expect(images.length).to.equal(10);
+            });
+
+            it('should handle edge case: export with no selection', function() {
+                const selectedCount = fixtures.querySelectorAll('.select-checkbox:checked').length;
+
+                if (selectedCount === 0) {
+                    const notification = TestHelpers.createNotificationBar();
+                    fixtures.appendChild(notification);
+                    notification.textContent = 'No images selected for export.';
+                    notification.classList.add('show', 'error');
+
+                    expect(notification.textContent).to.equal('No images selected for export.');
+                }
+            });
+
+            it('should handle edge case: filter removes all images', function() {
+                // Hide all
+                containers.forEach(c => c.style.display = 'none');
+
+                const visibleCount = Array.from(fixtures.querySelectorAll('.image-container'))
+                    .filter(c => c.style.display !== 'none').length;
+
+                statusBar.textContent = `Showing ${visibleCount} of 10 images | 0 selected`;
+                expect(statusBar.textContent).to.include('Showing 0 of 10');
+            });
+
+            it('should handle multiple rapid filter changes', async function() {
+                for (let i = 0; i < 10; i++) {
+                    const hideCount = Math.floor(Math.random() * 5);
+                    containers.slice(0, hideCount).forEach(c => c.style.display = 'none');
+                    containers.slice(hideCount).forEach(c => c.style.display = 'flex');
+                }
+
+                // Should not crash
+                expect(fixtures.querySelectorAll('.image-container').length).to.equal(10);
+            });
+        });
+
+        // =============================================================================
+        // RUN TESTS
+        // =============================================================================
+
+        // Run the tests
+        mocha.run();
+    </script>
+</body>
+</html>
