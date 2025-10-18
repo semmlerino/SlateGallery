@@ -400,7 +400,7 @@ class GalleryGeneratorApp(QMainWindow):
         # Main layout with margins
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(SPACING_LG, SPACING_LG, SPACING_LG, SPACING_LG)
-        main_layout.setSpacing(SPACING_MD)
+        main_layout.setSpacing(SPACING_SM)  # Tighter spacing between cards
         central_widget.setLayout(main_layout)
 
         # Directory Selection Card
@@ -445,15 +445,15 @@ class GalleryGeneratorApp(QMainWindow):
         dir_layout.setColumnStretch(2, 0)
         dir_layout.setColumnStretch(3, 0)
 
-        dir_card.content_layout.addLayout(dir_layout)
-        main_layout.addWidget(dir_card)
-
-        # Scan button
+        # Add Scan button in second row of directory card
         btn_scan = QPushButton("Scan Directory")
-        btn_scan.setObjectName("secondaryButton")
+        btn_scan.setObjectName("tertiaryButton")  # Less prominent
         btn_scan.setToolTip("Scan the selected directory for photo collections")
         _ = btn_scan.clicked.connect(self.on_scan)
-        main_layout.addWidget(btn_scan)
+        dir_layout.addWidget(btn_scan, 1, 1, 1, 3)  # Row 1, span across columns 1-3
+
+        dir_card.content_layout.addLayout(dir_layout)
+        main_layout.addWidget(dir_card)
 
         # Photo Collection Selection Card
         selection_card = CardWidget("Photo Collection Selection")
@@ -594,6 +594,7 @@ class GalleryGeneratorApp(QMainWindow):
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
+        self.progress_bar.setVisible(False)  # Hidden by default
         status_layout.addWidget(self.progress_bar)
 
         main_layout.addLayout(status_layout)
@@ -753,6 +754,7 @@ class GalleryGeneratorApp(QMainWindow):
             self.update_cached_dirs(root_path)  # Ensure it's cached
             self.update_status("Scanning directories...")
             logger.info(f"Scanning directories: {self.current_root_dir}")
+            self.progress_bar.setVisible(True)  # Show progress bar
             self.progress_bar.setValue(0)
             self.slates_dict = {}
             self.filtered_slates = {}
@@ -766,6 +768,8 @@ class GalleryGeneratorApp(QMainWindow):
                 self.apply_filters()
                 self.update_status("Loaded slates from cache.")
                 self.progress_bar.setValue(100)
+                # Hide progress bar after 2 seconds
+                QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))
                 logger.info(f"Loaded slates from cache for directory: {self.current_root_dir}")
             else:
                 # Start scan thread
@@ -783,6 +787,8 @@ class GalleryGeneratorApp(QMainWindow):
         self.apply_filters()
         self.update_status(message)
         self.progress_bar.setValue(100)
+        # Hide progress bar after 2 seconds
+        QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))
         logger.info(f"Scan complete: {message}")
 
     def on_scan_progress(self, progress):
@@ -913,6 +919,7 @@ class GalleryGeneratorApp(QMainWindow):
             self.update_cached_dirs(root_path)  # Ensure it's cached
             self.update_status("Refreshing directories...")
             logger.info(f"Refreshing directories: {self.current_root_dir}")
+            self.progress_bar.setVisible(True)  # Show progress bar
             self.progress_bar.setValue(0)
             self.slates_dict = {}
             self.filtered_slates = {}
@@ -959,6 +966,7 @@ class GalleryGeneratorApp(QMainWindow):
             self.btn_open_gallery.setEnabled(False)
             self.update_status("Generating gallery...")
             logger.info(f"Generating gallery at: {output}")
+            self.progress_bar.setVisible(True)  # Show progress bar
             self.progress_bar.setValue(0)
 
             # Path to the HTML template
@@ -996,6 +1004,8 @@ class GalleryGeneratorApp(QMainWindow):
     def on_gallery_complete(self, success, message):
         self.update_status(message)
         self.progress_bar.setValue(100 if success else 0)
+        # Hide progress bar after 2 seconds
+        QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))
         self.btn_generate.setEnabled(True)
         if success:
             self.btn_open_gallery.setEnabled(True)
