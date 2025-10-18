@@ -447,7 +447,7 @@ class GalleryGeneratorApp(QMainWindow):
 
         # Add Scan button in second row of directory card
         btn_scan = QPushButton("Scan Directory")
-        btn_scan.setObjectName("tertiaryButton")  # Less prominent
+        btn_scan.setObjectName("secondaryButton")  # Visible but not primary
         btn_scan.setToolTip("Scan the selected directory for photo collections")
         _ = btn_scan.clicked.connect(self.on_scan)
         dir_layout.addWidget(btn_scan, 1, 1, 1, 3)  # Row 1, span across columns 1-3
