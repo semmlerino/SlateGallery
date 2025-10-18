@@ -377,8 +377,10 @@ class GalleryGeneratorApp(QMainWindow):
             }}
 
             QListWidget::item:selected {{
-                background-color: {COLOR_SECONDARY};
-                color: {COLOR_PRIMARY};
+                background-color: #1976D2;
+                color: #FFFFFF;
+                font-weight: bold;
+                border-left: 4px solid #0D47A1;
             }}
 
             QListWidget::item:hover {{
