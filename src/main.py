@@ -458,11 +458,16 @@ class GalleryGeneratorApp(QMainWindow):
         # Slates Card
         selection_card = CardWidget()  # No card title
 
-        # Centered "Slates" title
+        # Centered "Slates" title (compact with subtle background)
+        title_container = QHBoxLayout()
+        title_container.addStretch()
+
         slates_title = QLabel("Slates")
-        slates_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        slates_title.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {COLOR_TEXT_PRIMARY}; background-color: {COLOR_SECONDARY}; border-radius: 4px; margin-bottom: 12px; padding: 8px;")
-        selection_card.content_layout.addWidget(slates_title)
+        slates_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #37474F; background-color: #F0F7FF; border-radius: 4px; padding: 6px 16px;")
+        title_container.addWidget(slates_title)
+
+        title_container.addStretch()
+        selection_card.content_layout.addLayout(title_container)
 
         # Filter input
         filter_input_layout = QHBoxLayout()
