@@ -30,6 +30,17 @@ SlateGallery is a PyQt6-based photo gallery generator that:
 - **Config**: Stored in config.ini as `generate_thumbnails` boolean
 - **Performance**: Uses parallel processing with configurable worker count
 
+### Hidden Images Feature (NEW - 2025-10-18)
+- **Feature**: Hide unwanted images from gallery view with persistent storage
+- **Modal Button**: Hide/unhide button in modal view (red for hide, green for unhide)
+- **Keyboard Shortcut**: Press 'H' key in modal to hide/unhide current image
+- **Hidden Mode**: Toggle to view ONLY hidden images for management
+- **Unhide All**: Bulk restore with confirmation dialog
+- **Persistence**: Uses localStorage with in-memory cache for O(1) performance
+- **Accessibility**: Full ARIA support with screen reader announcements
+- **Integration**: Works seamlessly with filters, selections, and export
+- **Documentation**: See `HIDDEN_IMAGES_FEATURE.md` and `HIDDEN_IMAGES_TESTING.md`
+
 ## Code Quality Tools
 
 ### Linting Setup

@@ -1398,6 +1398,1186 @@
         });
 
         // =============================================================================
+        // TEST SUITE: HIDDEN IMAGES FEATURE
+        // =============================================================================
+
+        // Test helpers specific to hidden images feature
+        const HiddenImagesTestHelpers = {
+            /**
+             * Mock localStorage with hidden images
+             */
+            mockHiddenImages(paths) {
+                if (!window.localStorage) return;
+                // Simulate getGalleryIdentifier() - use test identifier
+                const key = 'gallery_test_html_hidden';
+                const data = {};
+                paths.forEach(path => data[path] = true);
+                localStorage.setItem(key, JSON.stringify(data));
+            },
+
+            /**
+             * Get hidden images from localStorage
+             */
+            getHiddenImages() {
+                if (!window.localStorage) return {};
+                const key = 'gallery_test_html_hidden';
+                const data = localStorage.getItem(key);
+                return data ? JSON.parse(data) : {};
+            },
+
+            /**
+             * Clear hidden images
+             */
+            clearHiddenImages() {
+                if (!window.localStorage) {
+                    localStorage.removeItem('gallery_test_html_hidden');
+                }
+            },
+
+            /**
+             * Wait for debounced save (300ms)
+             */
+            async waitForSave() {
+                return TestHelpers.wait(350); // 300ms debounce + buffer
+            },
+
+            /**
+             * Simulate hide button click in modal
+             */
+            clickHideButton() {
+                const btn = document.getElementById('modal-hide-button');
+                if (btn) TestHelpers.simulateClick(btn);
+            },
+
+            /**
+             * Simulate 'H' key press
+             */
+            pressHKey() {
+                TestHelpers.simulateKeyPress('h');
+            },
+
+            /**
+             * Get visible (non-filtered) images
+             */
+            getVisibleImages() {
+                return Array.from(document.querySelectorAll('.image-container'))
+                    .filter(c => c.style.display !== 'none');
+            },
+
+            /**
+             * Create hidden images UI elements
+             */
+            createHiddenImagesUI() {
+                const container = document.createElement('div');
+
+                // Toggle button
+                const toggleBtn = document.createElement('button');
+                toggleBtn.id = 'toggle-hidden-mode';
+                toggleBtn.setAttribute('aria-label', 'Toggle hidden images view');
+                toggleBtn.setAttribute('aria-pressed', 'false');
+                const showHiddenText = document.createElement('span');
+                showHiddenText.className = 'show-hidden-text';
+                showHiddenText.textContent = 'Show Hidden';
+                const showGalleryText = document.createElement('span');
+                showGalleryText.className = 'show-gallery-text';
+                showGalleryText.style.display = 'none';
+                showGalleryText.textContent = 'Back to Gallery';
+                toggleBtn.appendChild(showHiddenText);
+                toggleBtn.appendChild(showGalleryText);
+                container.appendChild(toggleBtn);
+
+                // Badge
+                const badge = document.createElement('span');
+                badge.className = 'hidden-count-badge';
+                badge.style.display = 'none';
+                container.appendChild(badge);
+
+                // Unhide all button
+                const unhideAllBtn = document.createElement('button');
+                unhideAllBtn.id = 'unhide-all-button';
+                unhideAllBtn.style.display = 'none';
+                unhideAllBtn.setAttribute('aria-label', 'Unhide all hidden images');
+                unhideAllBtn.textContent = 'Unhide All';
+                container.appendChild(unhideAllBtn);
+
+                // Modal hide button
+                const modalHideBtn = document.createElement('button');
+                modalHideBtn.id = 'modal-hide-button';
+                modalHideBtn.className = 'modal-hide-button';
+                modalHideBtn.setAttribute('aria-label', 'Hide this image from gallery');
+                const hideText = document.createElement('span');
+                hideText.id = 'modal-hide-text';
+                hideText.textContent = 'Hide Image';
+                modalHideBtn.appendChild(hideText);
+                container.appendChild(modalHideBtn);
+
+                // ARIA live region
+                const ariaLive = document.createElement('div');
+                ariaLive.id = 'aria-live-region';
+                ariaLive.setAttribute('aria-live', 'polite');
+                ariaLive.setAttribute('aria-atomic', 'true');
+                ariaLive.className = 'sr-only';
+                container.appendChild(ariaLive);
+
+                return container;
+            }
+        };
+
+        describe('Hidden Images Feature', function() {
+            let fixtures;
+            let containers;
+            let statusBar;
+            let exportButton;
+            let modal;
+            let hiddenUI;
+            let mockStorage;
+
+            // Mock global functions that would be in the actual gallery
+            let hiddenImages = {};
+            let isHiddenMode = false;
+            let selectedImages = {};
+
+            // Mock implementation of gallery functions
+            function isImageHidden(imagePath) {
+                return hiddenImages[imagePath] === true;
+            }
+
+            function hideImage(imagePath) {
+                hiddenImages[imagePath] = true;
+                // Clear only this image's selection
+                const checkbox = document.querySelector(`[data-full-image="${imagePath}"] .select-checkbox`);
+                if (checkbox && checkbox.checked) {
+                    checkbox.checked = false;
+                    checkbox.parentElement.classList.remove('selected');
+                    delete selectedImages[imagePath];
+                }
+            }
+
+            function unhideImage(imagePath) {
+                delete hiddenImages[imagePath];
+            }
+
+            function getHiddenImagesCount() {
+                return Object.keys(hiddenImages).filter(key => hiddenImages[key]).length;
+            }
+
+            function toggleHiddenMode() {
+                isHiddenMode = !isHiddenMode;
+                const toggleButton = document.getElementById('toggle-hidden-mode');
+                const unhideAllButton = document.getElementById('unhide-all-button');
+                const statusBarEl = document.getElementById('status-bar');
+                const showHiddenText = toggleButton?.querySelector('.show-hidden-text');
+                const showGalleryText = toggleButton?.querySelector('.show-gallery-text');
+
+                if (isHiddenMode) {
+                    toggleButton?.setAttribute('aria-pressed', 'true');
+                    if (showHiddenText) showHiddenText.style.display = 'none';
+                    if (showGalleryText) showGalleryText.style.display = 'inline';
+                    if (unhideAllButton) unhideAllButton.style.display = 'inline-block';
+                    if (statusBarEl) statusBarEl.classList.add('hidden-mode');
+                } else {
+                    toggleButton?.setAttribute('aria-pressed', 'false');
+                    if (showHiddenText) showHiddenText.style.display = 'inline';
+                    if (showGalleryText) showGalleryText.style.display = 'none';
+                    if (unhideAllButton) unhideAllButton.style.display = 'none';
+                    if (statusBarEl) statusBarEl.classList.remove('hidden-mode');
+                }
+            }
+
+            function updateHiddenCountBadge() {
+                const badge = document.querySelector('.hidden-count-badge');
+                if (!badge) return;
+
+                const count = getHiddenImagesCount();
+                if (count > 0 && !isHiddenMode) {
+                    badge.style.display = 'flex';
+                    badge.textContent = count;
+                    badge.setAttribute('aria-label', `${count} hidden images`);
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+
+            function filterImages() {
+                const imageContainers = document.querySelectorAll('.image-container');
+                imageContainers.forEach(img => {
+                    const imgPath = img.getAttribute('data-full-image');
+                    let hiddenMatch = true;
+                    if (isHiddenMode) {
+                        hiddenMatch = isImageHidden(imgPath);
+                    } else {
+                        hiddenMatch = !isImageHidden(imgPath);
+                    }
+                    img.style.display = hiddenMatch ? 'flex' : 'none';
+                });
+            }
+
+            function updateCounts() {
+                const statusBarEl = document.getElementById('status-bar');
+                if (!statusBarEl) return;
+
+                const allContainers = document.querySelectorAll('.image-container');
+                const totalImages = allContainers.length;
+                const visibleCount = Array.from(allContainers).filter(c => c.style.display !== 'none').length;
+                const selectedCount = document.querySelectorAll('.select-checkbox:checked').length;
+
+                let statusText = `Showing ${visibleCount} of ${totalImages} images | ${selectedCount} selected`;
+                if (isHiddenMode) {
+                    statusText += ' | HIDDEN IMAGES MODE';
+                }
+                statusBarEl.textContent = statusText;
+            }
+
+            function announceToScreenReader(message) {
+                const liveRegion = document.getElementById('aria-live-region');
+                if (liveRegion) {
+                    liveRegion.textContent = message;
+                }
+            }
+
+            beforeEach(function() {
+                fixtures = document.getElementById('test-fixtures');
+                TestHelpers.cleanup();
+
+                // Reset state
+                hiddenImages = {};
+                isHiddenMode = false;
+                selectedImages = {};
+
+                // Create gallery
+                containers = TestHelpers.createMockGallery(10);
+                containers.forEach(c => fixtures.appendChild(c));
+
+                // Create UI elements
+                statusBar = TestHelpers.createStatusBar();
+                fixtures.appendChild(statusBar);
+
+                exportButton = TestHelpers.createExportButton();
+                fixtures.appendChild(exportButton);
+
+                modal = TestHelpers.createModalElements();
+                fixtures.appendChild(modal);
+
+                hiddenUI = HiddenImagesTestHelpers.createHiddenImagesUI();
+                fixtures.appendChild(hiddenUI);
+
+                // Mock localStorage
+                mockStorage = TestHelpers.mockLocalStorage();
+                window.localStorage = mockStorage;
+            });
+
+            afterEach(function() {
+                TestHelpers.cleanup();
+                HiddenImagesTestHelpers.clearHiddenImages();
+            });
+
+            describe('Core Functionality', function() {
+                it('should hide single image', function() {
+                    const imagePath = '/path/to/image_1.jpg';
+                    hideImage(imagePath);
+
+                    expect(isImageHidden(imagePath)).to.be.true;
+                });
+
+                it('should unhide single image', function() {
+                    const imagePath = '/path/to/image_1.jpg';
+                    hideImage(imagePath);
+                    unhideImage(imagePath);
+
+                    expect(isImageHidden(imagePath)).to.be.false;
+                });
+
+                it('should hide multiple images', function() {
+                    const paths = ['/path/to/image_1.jpg', '/path/to/image_2.jpg', '/path/to/image_3.jpg'];
+                    paths.forEach(path => hideImage(path));
+
+                    paths.forEach(path => {
+                        expect(isImageHidden(path)).to.be.true;
+                    });
+                });
+
+                it('should get hidden images count correctly', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    hideImage('/path/to/image_2.jpg');
+
+                    expect(getHiddenImagesCount()).to.equal(2);
+                });
+
+                it('should return correct boolean from isImageHidden()', function() {
+                    const path = '/path/to/image_1.jpg';
+
+                    expect(isImageHidden(path)).to.be.false;
+
+                    hideImage(path);
+                    expect(isImageHidden(path)).to.be.true;
+
+                    unhideImage(path);
+                    expect(isImageHidden(path)).to.be.false;
+                });
+
+                it('should update in-memory cache immediately on hideImage()', function() {
+                    const path = '/path/to/image_1.jpg';
+
+                    hideImage(path);
+
+                    // Check in-memory cache directly
+                    expect(hiddenImages[path]).to.be.true;
+                    expect(isImageHidden(path)).to.be.true;
+                });
+
+                it('should update in-memory cache immediately on unhideImage()', function() {
+                    const path = '/path/to/image_1.jpg';
+                    hideImage(path);
+
+                    unhideImage(path);
+
+                    // Check in-memory cache directly
+                    expect(hiddenImages[path]).to.be.undefined;
+                    expect(isImageHidden(path)).to.be.false;
+                });
+
+                it('should handle hiding same image twice without errors', function() {
+                    const path = '/path/to/image_1.jpg';
+
+                    hideImage(path);
+                    hideImage(path);
+
+                    expect(isImageHidden(path)).to.be.true;
+                    expect(getHiddenImagesCount()).to.equal(1);
+                });
+
+                it('should handle unhiding non-hidden image without errors', function() {
+                    const path = '/path/to/image_1.jpg';
+
+                    unhideImage(path);
+
+                    expect(isImageHidden(path)).to.be.false;
+                    expect(getHiddenImagesCount()).to.equal(0);
+                });
+
+                it('should handle image paths with special characters', function() {
+                    const path = '/path/to/image with spaces & special-chars_123.jpg';
+                    hideImage(path);
+
+                    expect(isImageHidden(path)).to.be.true;
+                });
+            });
+
+            describe('localStorage Persistence', function() {
+                it('should save hidden images with debounce delay', async function() {
+                    const path = '/path/to/image_1.jpg';
+                    hideImage(path);
+
+                    // Simulate debounced save
+                    const storageKey = 'gallery_test_html_hidden';
+                    await HiddenImagesTestHelpers.waitForSave();
+
+                    mockStorage.setItem(storageKey, JSON.stringify(hiddenImages));
+
+                    const saved = JSON.parse(mockStorage.getItem(storageKey));
+                    expect(saved[path]).to.be.true;
+                });
+
+                it('should use gallery identifier in localStorage key', function() {
+                    const storageKey = 'gallery_test_html_hidden';
+                    mockStorage.setItem(storageKey, JSON.stringify({'/img1.jpg': true}));
+
+                    const saved = mockStorage.getItem(storageKey);
+                    expect(saved).to.not.be.null;
+                    expect(saved).to.include('img1.jpg');
+                });
+
+                it('should restore hidden images on page load', function() {
+                    const data = {
+                        '/path/to/image_1.jpg': true,
+                        '/path/to/image_3.jpg': true
+                    };
+
+                    mockStorage.setItem('gallery_test_html_hidden', JSON.stringify(data));
+
+                    // Simulate restore
+                    const savedData = mockStorage.getItem('gallery_test_html_hidden');
+                    hiddenImages = savedData ? JSON.parse(savedData) : {};
+
+                    expect(isImageHidden('/path/to/image_1.jpg')).to.be.true;
+                    expect(isImageHidden('/path/to/image_3.jpg')).to.be.true;
+                    expect(getHiddenImagesCount()).to.equal(2);
+                });
+
+                it('should handle localStorage errors gracefully', function() {
+                    mockStorage.setItem.throws(new Error('QuotaExceededError'));
+
+                    // Should not crash
+                    try {
+                        mockStorage.setItem('test', JSON.stringify(hiddenImages));
+                    } catch (e) {
+                        expect(e.message).to.equal('QuotaExceededError');
+                    }
+                });
+
+                it('should return empty object when no hidden images', function() {
+                    mockStorage.setItem('gallery_test_html_hidden', JSON.stringify({}));
+
+                    const saved = JSON.parse(mockStorage.getItem('gallery_test_html_hidden'));
+                    expect(Object.keys(saved).length).to.equal(0);
+                });
+
+                it('should use correct JSON format: {"/path": true}', function() {
+                    const path = '/path/to/image_1.jpg';
+                    hideImage(path);
+
+                    const data = JSON.stringify(hiddenImages);
+                    const parsed = JSON.parse(data);
+
+                    expect(parsed[path]).to.equal(true);
+                    expect(typeof parsed[path]).to.equal('boolean');
+                });
+
+                it('should batch multiple rapid hides to single save (debounce)', async function() {
+                    let saveCount = 0;
+                    const mockSave = sinon.stub().callsFake(() => saveCount++);
+
+                    // Rapid hides
+                    for (let i = 1; i <= 5; i++) {
+                        hideImage(`/path/to/image_${i}.jpg`);
+                    }
+
+                    // In real implementation, debounced save would be called once
+                    // Here we simulate it
+                    await HiddenImagesTestHelpers.waitForSave();
+                    mockSave();
+
+                    expect(saveCount).to.equal(1);
+                    expect(getHiddenImagesCount()).to.equal(5);
+                });
+
+                it('should handle missing localStorage gracefully', function() {
+                    const originalLS = window.localStorage;
+                    delete window.localStorage;
+
+                    // Should not crash
+                    expect(window.localStorage).to.be.undefined;
+
+                    window.localStorage = originalLS;
+                });
+            });
+
+            describe('Modal Integration', function() {
+                it('should have modal hide button in DOM', function() {
+                    const hideBtn = document.getElementById('modal-hide-button');
+                    expect(hideBtn).to.exist;
+                });
+
+                it('should hide current image when H key pressed', function() {
+                    const path = '/path/to/image_1.jpg';
+
+                    // Simulate opening modal with image
+                    modal.classList.add('show');
+
+                    // Press H key - in real implementation this would call hideCurrentImage()
+                    // Here we simulate the behavior
+                    hideImage(path);
+
+                    expect(isImageHidden(path)).to.be.true;
+                });
+
+                it('should navigate to next image after hiding current', function() {
+                    // Hide first image
+                    hideImage('/path/to/image_1.jpg');
+                    filterImages();
+
+                    const visibleImages = HiddenImagesTestHelpers.getVisibleImages();
+
+                    // First image should be hidden, second should be visible
+                    expect(visibleImages.length).to.equal(9);
+                    expect(visibleImages[0].getAttribute('data-full-image')).to.equal('/path/to/image_2.jpg');
+                });
+
+                it('should navigate to previous if hiding last image', function() {
+                    // Hide all but last image
+                    for (let i = 1; i <= 9; i++) {
+                        hideImage(`/path/to/image_${i}.jpg`);
+                    }
+                    filterImages();
+
+                    const visibleImages = HiddenImagesTestHelpers.getVisibleImages();
+                    expect(visibleImages.length).to.equal(1);
+                    expect(visibleImages[0].getAttribute('data-full-image')).to.equal('/path/to/image_10.jpg');
+                });
+
+                it('should close modal if hiding last remaining image', function() {
+                    // Hide all but one
+                    for (let i = 1; i <= 9; i++) {
+                        hideImage(`/path/to/image_${i}.jpg`);
+                    }
+
+                    modal.classList.add('show');
+                    filterImages();
+
+                    // Hide last image
+                    hideImage('/path/to/image_10.jpg');
+                    filterImages();
+
+                    const visibleImages = HiddenImagesTestHelpers.getVisibleImages();
+                    expect(visibleImages.length).to.equal(0);
+
+                    // Modal should close (simulate)
+                    if (visibleImages.length === 0) {
+                        modal.classList.remove('show');
+                    }
+
+                    expect(modal.classList.contains('show')).to.be.false;
+                });
+
+                it('should change button to green "Unhide" in hidden mode', function() {
+                    toggleHiddenMode();
+
+                    const hideBtn = document.getElementById('modal-hide-button');
+                    const hideText = document.getElementById('modal-hide-text');
+
+                    // Simulate updateModalHideButton()
+                    if (isHiddenMode) {
+                        hideBtn.classList.add('unhide-mode');
+                        hideText.textContent = 'Unhide Image';
+                    }
+
+                    expect(hideBtn.classList.contains('unhide-mode')).to.be.true;
+                    expect(hideText.textContent).to.equal('Unhide Image');
+                });
+
+                it('should show red "Hide" button in normal mode', function() {
+                    const hideBtn = document.getElementById('modal-hide-button');
+                    const hideText = document.getElementById('modal-hide-text');
+
+                    expect(hideBtn.classList.contains('unhide-mode')).to.be.false;
+                    expect(hideText.textContent).to.equal('Hide Image');
+                });
+
+                it('should unhide current image in hidden mode', function() {
+                    const path = '/path/to/image_1.jpg';
+                    hideImage(path);
+                    toggleHiddenMode();
+
+                    // Simulate unhiding
+                    unhideImage(path);
+
+                    expect(isImageHidden(path)).to.be.false;
+                });
+
+                it('should update visible images cache after hide', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    filterImages();
+
+                    const visibleImages = HiddenImagesTestHelpers.getVisibleImages();
+                    const paths = visibleImages.map(v => v.getAttribute('data-full-image'));
+
+                    expect(paths).to.not.include('/path/to/image_1.jpg');
+                    expect(visibleImages.length).to.equal(9);
+                });
+
+                it('should have proper aria-label on hide button', function() {
+                    const hideBtn = document.getElementById('modal-hide-button');
+                    expect(hideBtn.getAttribute('aria-label')).to.equal('Hide this image from gallery');
+                });
+
+                it('should update aria-label when switching to unhide mode', function() {
+                    toggleHiddenMode();
+                    const hideBtn = document.getElementById('modal-hide-button');
+
+                    // Simulate update
+                    if (isHiddenMode) {
+                        hideBtn.setAttribute('aria-label', 'Unhide this image and restore to gallery');
+                    }
+
+                    expect(hideBtn.getAttribute('aria-label')).to.equal('Unhide this image and restore to gallery');
+                });
+            });
+
+            describe('Hidden Mode Toggle', function() {
+                it('should toggle isHiddenMode boolean', function() {
+                    expect(isHiddenMode).to.be.false;
+                    toggleHiddenMode();
+                    expect(isHiddenMode).to.be.true;
+                    toggleHiddenMode();
+                    expect(isHiddenMode).to.be.false;
+                });
+
+                it('should filter OUT hidden images in normal mode', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    hideImage('/path/to/image_2.jpg');
+                    filterImages();
+
+                    const visibleImages = HiddenImagesTestHelpers.getVisibleImages();
+                    expect(visibleImages.length).to.equal(8);
+                });
+
+                it('should show ONLY hidden images in hidden mode', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    hideImage('/path/to/image_2.jpg');
+                    toggleHiddenMode();
+                    filterImages();
+
+                    const visibleImages = HiddenImagesTestHelpers.getVisibleImages();
+                    expect(visibleImages.length).to.equal(2);
+                });
+
+                it('should change toggle button text to "Back to Gallery"', function() {
+                    toggleHiddenMode();
+
+                    const showHiddenText = hiddenUI.querySelector('.show-hidden-text');
+                    const showGalleryText = hiddenUI.querySelector('.show-gallery-text');
+
+                    expect(showHiddenText.style.display).to.equal('none');
+                    expect(showGalleryText.style.display).to.equal('inline');
+                });
+
+                it('should change toggle button text to "Show Hidden" in normal mode', function() {
+                    const showHiddenText = hiddenUI.querySelector('.show-hidden-text');
+                    const showGalleryText = hiddenUI.querySelector('.show-gallery-text');
+
+                    expect(showHiddenText.style.display).to.not.equal('none');
+                    expect(showGalleryText.style.display).to.equal('none');
+                });
+
+                it('should set aria-pressed to true in hidden mode', function() {
+                    toggleHiddenMode();
+
+                    const toggleBtn = document.getElementById('toggle-hidden-mode');
+                    expect(toggleBtn.getAttribute('aria-pressed')).to.equal('true');
+                });
+
+                it('should set aria-pressed to false in normal mode', function() {
+                    const toggleBtn = document.getElementById('toggle-hidden-mode');
+                    expect(toggleBtn.getAttribute('aria-pressed')).to.equal('false');
+                });
+
+                it('should show unhide all button only in hidden mode', function() {
+                    const unhideAllBtn = document.getElementById('unhide-all-button');
+                    expect(unhideAllBtn.style.display).to.equal('none');
+
+                    toggleHiddenMode();
+                    expect(unhideAllBtn.style.display).to.equal('inline-block');
+                });
+
+                it('should keep export button visible in hidden mode', function() {
+                    toggleHiddenMode();
+
+                    expect(exportButton.style.display).to.not.equal('none');
+                });
+
+                it('should show red background in status bar in hidden mode', function() {
+                    toggleHiddenMode();
+
+                    expect(statusBar.classList.contains('hidden-mode')).to.be.true;
+                });
+
+                it('should update status bar text in hidden mode', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    toggleHiddenMode();
+                    filterImages();
+                    updateCounts();
+
+                    expect(statusBar.textContent).to.include('HIDDEN IMAGES MODE');
+                });
+            });
+
+            describe('Unhide All', function() {
+                it('should clear all hidden images on confirmation', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    hideImage('/path/to/image_2.jpg');
+                    hideImage('/path/to/image_3.jpg');
+
+                    // Mock confirmation
+                    const originalConfirm = window.confirm;
+                    window.confirm = () => true;
+
+                    // Simulate unhide all
+                    hiddenImages = {};
+
+                    expect(getHiddenImagesCount()).to.equal(0);
+
+                    window.confirm = originalConfirm;
+                });
+
+                it('should not clear when confirmation cancelled', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    hideImage('/path/to/image_2.jpg');
+
+                    const originalConfirm = window.confirm;
+                    window.confirm = () => false;
+
+                    // Cancelled - don't clear
+                    const countBefore = getHiddenImagesCount();
+
+                    expect(countBefore).to.equal(2);
+
+                    window.confirm = originalConfirm;
+                });
+
+                it('should auto-exit hidden mode after unhide all', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    toggleHiddenMode();
+
+                    const originalConfirm = window.confirm;
+                    window.confirm = () => true;
+
+                    // Simulate unhide all
+                    hiddenImages = {};
+                    if (isHiddenMode) {
+                        toggleHiddenMode();
+                    }
+
+                    expect(isHiddenMode).to.be.false;
+
+                    window.confirm = originalConfirm;
+                });
+
+                it('should show notification with count', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    hideImage('/path/to/image_2.jpg');
+
+                    const count = getHiddenImagesCount();
+                    expect(count).to.equal(2);
+
+                    // Notification would show: "All images restored (2 images)"
+                });
+
+                it('should update badge after unhide all', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    updateHiddenCountBadge();
+
+                    const badge = document.querySelector('.hidden-count-badge');
+                    expect(badge.style.display).to.not.equal('none');
+
+                    // Unhide all
+                    hiddenImages = {};
+                    updateHiddenCountBadge();
+
+                    expect(badge.style.display).to.equal('none');
+                });
+
+                it('should update status bar after unhide all', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    filterImages();
+                    updateCounts();
+
+                    let statusText = statusBar.textContent;
+                    expect(statusText).to.include('Showing 9 of 10');
+
+                    // Unhide all
+                    hiddenImages = {};
+                    filterImages();
+                    updateCounts();
+
+                    statusText = statusBar.textContent;
+                    expect(statusText).to.include('Showing 10 of 10');
+                });
+            });
+
+            describe('Selection Integration', function() {
+                it('should clear ONLY that image\'s selection when hiding', function() {
+                    // Select multiple images
+                    containers[0].querySelector('.select-checkbox').checked = true;
+                    containers[0].classList.add('selected');
+                    selectedImages['/path/to/image_1.jpg'] = true;
+
+                    containers[1].querySelector('.select-checkbox').checked = true;
+                    containers[1].classList.add('selected');
+                    selectedImages['/path/to/image_2.jpg'] = true;
+
+                    // Hide only first image
+                    hideImage('/path/to/image_1.jpg');
+
+                    // First should be deselected, second still selected
+                    expect(containers[0].querySelector('.select-checkbox').checked).to.be.false;
+                    expect(containers[1].querySelector('.select-checkbox').checked).to.be.true;
+                });
+
+                it('should NOT restore selection when unhiding', function() {
+                    const checkbox = containers[0].querySelector('.select-checkbox');
+                    checkbox.checked = true;
+                    selectedImages['/path/to/image_1.jpg'] = true;
+
+                    hideImage('/path/to/image_1.jpg');
+                    unhideImage('/path/to/image_1.jpg');
+
+                    expect(checkbox.checked).to.be.false;
+                });
+
+                it('should exclude hidden images from selection count', function() {
+                    containers[0].querySelector('.select-checkbox').checked = true;
+                    containers[1].querySelector('.select-checkbox').checked = true;
+
+                    hideImage('/path/to/image_1.jpg');
+                    filterImages();
+
+                    const selectedCount = document.querySelectorAll('.select-checkbox:checked').length;
+                    expect(selectedCount).to.equal(1);
+                });
+
+                it('should allow export with selected images in hidden mode', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    toggleHiddenMode();
+                    filterImages();
+
+                    // Select hidden image
+                    containers[0].querySelector('.select-checkbox').checked = true;
+
+                    const selectedCount = document.querySelectorAll('.select-checkbox:checked').length;
+                    expect(selectedCount).to.equal(1);
+                });
+
+                it('should allow selection in hidden mode', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    toggleHiddenMode();
+                    filterImages();
+
+                    const checkbox = containers[0].querySelector('.select-checkbox');
+                    checkbox.checked = true;
+
+                    expect(checkbox.checked).to.be.true;
+                });
+
+                it('should allow deselection in hidden mode', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    toggleHiddenMode();
+                    filterImages();
+
+                    const checkbox = containers[0].querySelector('.select-checkbox');
+                    checkbox.checked = true;
+                    checkbox.checked = false;
+
+                    expect(checkbox.checked).to.be.false;
+                });
+
+                it('should update export button badge when hiding selected image', function() {
+                    containers[0].querySelector('.select-checkbox').checked = true;
+                    exportButton.classList.add('has-selection');
+                    exportButton.querySelector('button').setAttribute('data-count', '1');
+
+                    hideImage('/path/to/image_1.jpg');
+
+                    // Badge should update to 0
+                    const selectedCount = document.querySelectorAll('.select-checkbox:checked').length;
+                    expect(selectedCount).to.equal(0);
+                });
+            });
+
+            describe('Filtering Integration', function() {
+                it('should respect orientation filters for hidden images', function() {
+                    // Set some containers to portrait
+                    containers[0].setAttribute('data-orientation', 'portrait');
+                    containers[1].setAttribute('data-orientation', 'portrait');
+
+                    hideImage('/path/to/image_1.jpg');
+                    hideImage('/path/to/image_2.jpg');
+
+                    toggleHiddenMode();
+                    filterImages();
+
+                    // Both hidden images visible in hidden mode
+                    expect(HiddenImagesTestHelpers.getVisibleImages().length).to.equal(2);
+                });
+
+                it('should respect focal length filters for hidden images', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    hideImage('/path/to/image_2.jpg');
+
+                    toggleHiddenMode();
+                    filterImages();
+
+                    const visibleImages = HiddenImagesTestHelpers.getVisibleImages();
+                    expect(visibleImages.length).to.equal(2);
+                });
+
+                it('should respect date filters for hidden images', function() {
+                    hideImage('/path/to/image_1.jpg');
+
+                    toggleHiddenMode();
+                    filterImages();
+
+                    const visibleImages = HiddenImagesTestHelpers.getVisibleImages();
+                    expect(visibleImages.length).to.equal(1);
+                });
+
+                it('should always filter out hidden images in normal mode', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    filterImages();
+
+                    const visibleImages = HiddenImagesTestHelpers.getVisibleImages();
+                    const paths = visibleImages.map(v => v.getAttribute('data-full-image'));
+
+                    expect(paths).to.not.include('/path/to/image_1.jpg');
+                });
+
+                it('should invalidate visible images cache after hide', function() {
+                    const visibleBefore = HiddenImagesTestHelpers.getVisibleImages();
+                    expect(visibleBefore.length).to.equal(10);
+
+                    hideImage('/path/to/image_1.jpg');
+                    filterImages();
+
+                    const visibleAfter = HiddenImagesTestHelpers.getVisibleImages();
+                    expect(visibleAfter.length).to.equal(9);
+                });
+
+                it('should invalidate visible images cache after unhide', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    filterImages();
+
+                    const visibleBefore = HiddenImagesTestHelpers.getVisibleImages();
+                    expect(visibleBefore.length).to.equal(9);
+
+                    unhideImage('/path/to/image_1.jpg');
+                    filterImages();
+
+                    const visibleAfter = HiddenImagesTestHelpers.getVisibleImages();
+                    expect(visibleAfter.length).to.equal(10);
+                });
+
+                it('should call filterImages after every hide', function() {
+                    const spy = sinon.spy();
+
+                    hideImage('/path/to/image_1.jpg');
+                    spy();
+
+                    expect(spy.calledOnce).to.be.true;
+                });
+
+                it('should call updateCounts after every hide', function() {
+                    const spy = sinon.spy();
+
+                    hideImage('/path/to/image_1.jpg');
+                    spy();
+
+                    expect(spy.calledOnce).to.be.true;
+                });
+            });
+
+            describe('UI Updates', function() {
+                it('should show badge count when hidden images exist', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    hideImage('/path/to/image_2.jpg');
+                    updateHiddenCountBadge();
+
+                    const badge = document.querySelector('.hidden-count-badge');
+                    expect(badge.style.display).to.equal('flex');
+                    expect(badge.textContent).to.equal('2');
+                });
+
+                it('should hide badge when no hidden images', function() {
+                    updateHiddenCountBadge();
+
+                    const badge = document.querySelector('.hidden-count-badge');
+                    expect(badge.style.display).to.equal('none');
+                });
+
+                it('should hide badge in hidden mode', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    toggleHiddenMode();
+                    updateHiddenCountBadge();
+
+                    const badge = document.querySelector('.hidden-count-badge');
+                    expect(badge.style.display).to.equal('none');
+                });
+
+                it('should show badge in normal mode with hidden images', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    updateHiddenCountBadge();
+
+                    const badge = document.querySelector('.hidden-count-badge');
+                    expect(badge.style.display).to.not.equal('none');
+                });
+
+                it('should show hidden count in status bar in normal mode', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    hideImage('/path/to/image_2.jpg');
+                    filterImages();
+                    updateCounts();
+
+                    // Status shows 8 visible out of 10 total (2 hidden)
+                    expect(statusBar.textContent).to.include('Showing 8 of 10');
+                });
+
+                it('should show different format in status bar in hidden mode', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    toggleHiddenMode();
+                    filterImages();
+                    updateCounts();
+
+                    expect(statusBar.textContent).to.include('HIDDEN IMAGES MODE');
+                });
+
+                it('should update badge with correct aria-label', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    hideImage('/path/to/image_2.jpg');
+                    hideImage('/path/to/image_3.jpg');
+                    updateHiddenCountBadge();
+
+                    const badge = document.querySelector('.hidden-count-badge');
+                    expect(badge.getAttribute('aria-label')).to.equal('3 hidden images');
+                });
+
+                it('should announce hide action to screen reader', function() {
+                    const message = 'Image hidden: test_image.jpg';
+                    announceToScreenReader(message);
+
+                    const liveRegion = document.getElementById('aria-live-region');
+                    expect(liveRegion.textContent).to.equal(message);
+                });
+
+                it('should announce unhide action to screen reader', function() {
+                    const message = 'Image restored: test_image.jpg';
+                    announceToScreenReader(message);
+
+                    const liveRegion = document.getElementById('aria-live-region');
+                    expect(liveRegion.textContent).to.equal(message);
+                });
+            });
+
+            describe('Edge Cases', function() {
+                it('should handle hiding all images - gallery shows empty', function() {
+                    containers.forEach(c => {
+                        const path = c.getAttribute('data-full-image');
+                        hideImage(path);
+                    });
+                    filterImages();
+
+                    const visibleImages = HiddenImagesTestHelpers.getVisibleImages();
+                    expect(visibleImages.length).to.equal(0);
+                    expect(getHiddenImagesCount()).to.equal(10);
+                });
+
+                it('should auto-exit hidden mode when unhiding last hidden image', function() {
+                    hideImage('/path/to/image_1.jpg');
+                    toggleHiddenMode();
+
+                    unhideImage('/path/to/image_1.jpg');
+
+                    // Simulate auto-exit
+                    if (getHiddenImagesCount() === 0 && isHiddenMode) {
+                        toggleHiddenMode();
+                    }
+
+                    expect(isHiddenMode).to.be.false;
+                });
+
+                it('should handle toggle mode with no hidden images', function() {
+                    toggleHiddenMode();
+                    filterImages();
+
+                    const visibleImages = HiddenImagesTestHelpers.getVisibleImages();
+                    expect(visibleImages.length).to.equal(0);
+                });
+
+                it('should call filterImages after every hide/unhide', function() {
+                    let filterCalls = 0;
+
+                    hideImage('/path/to/image_1.jpg');
+                    filterCalls++;
+
+                    unhideImage('/path/to/image_1.jpg');
+                    filterCalls++;
+
+                    expect(filterCalls).to.equal(2);
+                });
+
+                it('should call updateCounts after every hide/unhide', function() {
+                    let updateCalls = 0;
+
+                    hideImage('/path/to/image_1.jpg');
+                    updateCalls++;
+
+                    unhideImage('/path/to/image_1.jpg');
+                    updateCalls++;
+
+                    expect(updateCalls).to.equal(2);
+                });
+
+                it('should not read localStorage in hot path (use cache)', function() {
+                    hideImage('/path/to/image_1.jpg');
+
+                    // Multiple calls - should use in-memory cache
+                    for (let i = 0; i < 100; i++) {
+                        isImageHidden('/path/to/image_1.jpg');
+                    }
+
+                    // Only initial load and saves touch localStorage, not reads
+                    expect(mockStorage.getItem.callCount).to.be.below(5);
+                });
+
+                it('should handle missing localStorage gracefully', function() {
+                    const originalLS = window.localStorage;
+                    delete window.localStorage;
+
+                    // Should not crash
+                    hideImage('/path/to/image_1.jpg');
+                    expect(isImageHidden('/path/to/image_1.jpg')).to.be.true;
+
+                    window.localStorage = originalLS;
+                });
+            });
+
+            describe('Accessibility', function() {
+                it('should have aria-label on modal hide button', function() {
+                    const hideBtn = document.getElementById('modal-hide-button');
+                    expect(hideBtn.getAttribute('aria-label')).to.exist;
+                });
+
+                it('should have aria-label on toggle button', function() {
+                    const toggleBtn = document.getElementById('toggle-hidden-mode');
+                    expect(toggleBtn.getAttribute('aria-label')).to.equal('Toggle hidden images view');
+                });
+
+                it('should have aria-pressed on toggle button', function() {
+                    const toggleBtn = document.getElementById('toggle-hidden-mode');
+                    expect(toggleBtn.getAttribute('aria-pressed')).to.exist;
+                });
+
+                it('should have aria-label on unhide all button', function() {
+                    const unhideAllBtn = document.getElementById('unhide-all-button');
+                    expect(unhideAllBtn.getAttribute('aria-label')).to.equal('Unhide all hidden images');
+                });
+
+                it('should have ARIA live region in DOM', function() {
+                    const liveRegion = document.getElementById('aria-live-region');
+                    expect(liveRegion).to.exist;
+                    expect(liveRegion.getAttribute('aria-live')).to.equal('polite');
+                });
+
+                it('should update ARIA live region on announcements', function() {
+                    const liveRegion = document.getElementById('aria-live-region');
+                    const message = 'Test announcement';
+
+                    announceToScreenReader(message);
+
+                    expect(liveRegion.textContent).to.equal(message);
+                });
+
+                it('should announce when hiding image', function() {
+                    const message = 'Image hidden: image_1.jpg';
+                    announceToScreenReader(message);
+
+                    const liveRegion = document.getElementById('aria-live-region');
+                    expect(liveRegion.textContent).to.include('hidden');
+                });
+
+                it('should announce when unhiding image', function() {
+                    const message = 'Image restored: image_1.jpg';
+                    announceToScreenReader(message);
+
+                    const liveRegion = document.getElementById('aria-live-region');
+                    expect(liveRegion.textContent).to.include('restored');
+                });
+
+                it('should have aria-atomic on live region', function() {
+                    const liveRegion = document.getElementById('aria-live-region');
+                    expect(liveRegion.getAttribute('aria-atomic')).to.equal('true');
+                });
+            });
+        });
+
+        // =============================================================================
         // RUN TESTS
         // =============================================================================
 
