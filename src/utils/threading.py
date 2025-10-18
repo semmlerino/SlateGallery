@@ -6,10 +6,10 @@ import threading
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Any, Optional
-from typing_extensions import override
 
 from PySide6 import QtCore
 from PySide6.QtCore import Signal
+from typing_extensions import override
 
 from .logging_config import log_function, logger
 
@@ -30,6 +30,12 @@ class ScanThread(QtCore.QThread):
         super().__init__()
         self.root_dir: str = str(root_dir)
         self.cache_manager: Any = cache_manager
+        self._is_running: bool = True
+
+    def stop(self) -> None:
+        """Gracefully stop the thread."""
+        self._is_running = False
+        self.wait(5000)  # Wait max 5 seconds for thread to finish
 
     @log_function
     @override
@@ -46,6 +52,12 @@ class ScanThread(QtCore.QThread):
             logger.debug(f"Total slates to process: {total_slates}")
 
             for _slate, data in slates.items():
+                # Check if we should stop
+                if not self._is_running:
+                    logger.info("Scan thread stopped by user request")
+                    self.scan_complete.emit({}, "Scan cancelled.")
+                    return
+
                 image_paths: list[dict[str, Any]] = data["images"]
                 processed_images: list[dict[str, Any]] = self.cache_manager.process_images_batch(
                     image_paths, callback=lambda p: self.progress.emit(int(p))
@@ -97,6 +109,7 @@ class GenerateGalleryThread(QtCore.QThread):
         self.generate_thumbnails: bool = generate_thumbnails
         self.thumbnail_size: int = thumbnail_size
         self.lazy_loading: bool = lazy_loading
+        self._is_running: bool = True
 
         # Lock for thread-safe operations
         self.focal_length_lock: threading.Lock = threading.Lock()
@@ -115,6 +128,11 @@ class GenerateGalleryThread(QtCore.QThread):
         self.max_workers: int = min(multiprocessing.cpu_count() * 2, 16)
         logger.info(f"Using {self.max_workers} workers for parallel image processing")
 
+    def stop(self) -> None:
+        """Gracefully stop the thread."""
+        self._is_running = False
+        self.wait(5000)  # Wait max 5 seconds for thread to finish
+
     @override
     def run(self) -> None:
         try:
@@ -127,6 +145,12 @@ class GenerateGalleryThread(QtCore.QThread):
             logger.info(f"Total slates selected: {total_slates}")
 
             for slate in self.selected_slates:
+                # Check if we should stop
+                if not self._is_running:
+                    logger.info("Gallery generation thread stopped by user request")
+                    self.gallery_complete.emit(False, "Gallery generation cancelled.")
+                    return
+
                 images: list[dict[str, Any]] = self.slates_dict.get(slate, {}).get("images", [])
 
                 # Always use parallel processing for better performance
@@ -255,8 +279,16 @@ class GenerateGalleryThread(QtCore.QThread):
             if focal_length:
                 if isinstance(focal_length, tuple):
                     try:
-                        focal_length_value = float(focal_length[0]) / float(focal_length[1])
-                    except Exception as e:
+                        # Validate tuple structure and prevent division by zero
+                        if len(focal_length) >= 2:
+                            denominator = float(focal_length[1])
+                            if denominator != 0:
+                                focal_length_value = float(focal_length[0]) / denominator
+                            else:
+                                logger.warning(f"Invalid focal length (zero denominator): {focal_length} for {image_path}")
+                        else:
+                            logger.warning(f"Invalid focal length tuple length: {focal_length} for {image_path}")
+                    except (ValueError, TypeError) as e:
                         logger.warning(f"Invalid focal length tuple for {image_path}: {e}")
                 else:
                     try:

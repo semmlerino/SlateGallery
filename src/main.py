@@ -10,6 +10,7 @@ import os
 import sys
 import webbrowser
 from typing import Optional
+
 from typing_extensions import override
 
 # Add src to path for imports
@@ -821,13 +822,16 @@ class GalleryGeneratorApp(QMainWindow):
         """Save thumbnail size preference when dropdown changes."""
         if text:
             # Extract the size number from the text (e.g., "600x600" -> 600)
-            size_str = text.split('x')[0]
-            try:
-                self.thumbnail_size = int(size_str)
-                save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
-                logger.info(f"Thumbnail size changed to: {self.thumbnail_size}")
-            except ValueError:
-                logger.error(f"Invalid thumbnail size: {text}")
+            if 'x' in text:
+                size_str = text.split('x')[0].strip()
+                try:
+                    self.thumbnail_size = int(size_str)
+                    save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
+                    logger.info(f"Thumbnail size changed to: {self.thumbnail_size}")
+                except ValueError:
+                    logger.error(f"Invalid thumbnail size format: {text}")
+            else:
+                logger.error(f"Invalid thumbnail size format (missing 'x'): {text}")
 
     def on_lazy_loading_pref_changed(self):
         """Save lazy loading preference when checkbox state changes."""
@@ -838,12 +842,26 @@ class GalleryGeneratorApp(QMainWindow):
     @override
     def closeEvent(self, event):
         try:
+            # Stop and wait for running threads
+            if self.scan_thread and self.scan_thread.isRunning():
+                logger.info("Stopping scan thread...")
+                self.scan_thread.stop()
+
+            if self.gallery_thread and self.gallery_thread.isRunning():
+                logger.info("Stopping gallery generation thread...")
+                self.gallery_thread.stop()
+
+            # Stop filter timer
+            self.filter_timer.stop()
+
             # Ensure clean shutdown
             self.cache_manager.shutdown()
             logger.info("Cache manager shutdown successfully.")
+
             # Save configuration
             root_dir = str(self.cmb_root.currentText()).strip()
             save_config(root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref)
+
             event.accept()
             logger.info("Application closed.")
         except Exception as e:

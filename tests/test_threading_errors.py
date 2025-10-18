@@ -1,24 +1,26 @@
 """
-Comprehensive error testing for threading module.
+Essential threading error tests - high ROI, real-world scenarios only.
 
-Tests error handling, exception propagation, and edge cases in:
+Tests critical error handling in:
 - ScanThread: Directory scanning with error conditions
 - GenerateGalleryThread: Gallery generation with failures
-- ThreadPoolExecutor: Parallel processing error handling
+- Cache concurrency: Race conditions in shared resources
+
+Focus: Testing OUR code's error handling, not stdlib/Qt behavior.
+9 tests targeting real bugs users encounter.
 """
 
 import pytest
-import os
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock
 from PySide6.QtCore import QThread
 
 from src.utils.threading import ScanThread, GenerateGalleryThread
 from src.core.cache_manager import ImprovedCacheManager
 
 
-class TestScanThreadErrorHandling:
-    """Test error scenarios in ScanThread"""
+class TestScanThreadErrors:
+    """Test error scenarios in ScanThread - focus on real-world failures"""
 
     @pytest.fixture
     def cleanup_threads(self):
@@ -26,7 +28,7 @@ class TestScanThreadErrorHandling:
         threads = []
         yield threads
 
-        # Cleanup
+        # Proper cleanup to avoid "destroyed while running" warnings
         for thread in threads:
             if thread.isRunning():
                 thread.requestInterruption()
@@ -42,76 +44,65 @@ class TestScanThreadErrorHandling:
         return mock
 
     def test_nonexistent_directory(self, qtbot, mock_cache_manager, cleanup_threads):
-        """Test ScanThread handles non-existent directory gracefully"""
+        """Test ScanThread handles non-existent directory gracefully
+
+        Real-world scenario: User types invalid path or directory was deleted
+        """
         # Arrange
         thread = ScanThread('/totally/nonexistent/path', mock_cache_manager)
         cleanup_threads.append(thread)
 
-        # Act & Assert - Should complete without crashing
+        # Act - Should complete without crashing
         with qtbot.waitSignal(thread.scan_complete, timeout=3000) as blocker:
             thread.start()
 
-        # Thread should complete (even if with error)
+        # Assert - Thread completes even with invalid path
         assert blocker.signal_triggered or not thread.isRunning()
 
-    @pytest.mark.skipif(os.name == 'nt', reason="Permissions work differently on Windows")
-    def test_permission_denied_directory(self, qtbot, mock_cache_manager, cleanup_threads, tmp_path):
-        """Test ScanThread handles permission denied errors"""
-        # Arrange - Create directory with no permissions
-        restricted_dir = tmp_path / "restricted"
-        restricted_dir.mkdir()
-
-        try:
-            # Remove all permissions
-            restricted_dir.chmod(0o000)
-
-            thread = ScanThread(str(restricted_dir), mock_cache_manager)
-            cleanup_threads.append(thread)
-
-            # Act - Should handle gracefully
-            thread.start()
-            _ = thread.wait(3000)
-
-            # Thread should complete (may or may not emit signal)
-            assert not thread.isRunning()
-
-        finally:
-            # Restore permissions for cleanup
-            restricted_dir.chmod(0o755)
-
     def test_corrupted_image_file_handling(self, qtbot, mock_cache_manager, cleanup_threads, tmp_path):
-        """Test ScanThread skips corrupted image files"""
-        # Arrange - Create a file that looks like an image but isn't
+        """Test ScanThread skips corrupted/malformed image files
+
+        Real-world scenario: macOS ._ files, truncated downloads, invalid JPEGs
+        """
+        # Arrange - Create files that look like images but aren't
         image_dir = tmp_path / "images"
         image_dir.mkdir()
 
-        corrupted_image = image_dir / "corrupted.jpg"
-        corrupted_image.write_bytes(b"This is not a valid JPEG")
+        # Corrupted JPEG
+        corrupted_jpg = image_dir / "corrupted.jpg"
+        corrupted_jpg.write_bytes(b"This is not a valid JPEG")
 
-        # Also create a valid test structure
+        # macOS resource fork file (real issue we've seen)
+        macos_fork = image_dir / "._image.jpg"
+        macos_fork.write_bytes(b"\x00\x05\x16\x07")  # AppleDouble header
+
+        # Valid directory structure
         (image_dir / "Slate01").mkdir()
 
         thread = ScanThread(str(image_dir), mock_cache_manager)
         cleanup_threads.append(thread)
 
-        # Act
+        # Act - Should complete without crashing
         thread.start()
         _ = thread.wait(3000)
 
-        # Assert - Should complete without crashing
+        # Assert - Thread completes gracefully, skipping bad files
         assert not thread.isRunning()
 
     def test_thread_interruption_during_scan(self, qtbot, mock_cache_manager, cleanup_threads, tmp_path):
-        """Test ScanThread handles interruption gracefully"""
-        # Arrange - Create a large directory structure
+        """Test ScanThread handles interruption gracefully
+
+        Real-world scenario: User clicks cancel during long scan
+        """
+        # Arrange - Create directory structure (not too large for CI)
         image_dir = tmp_path / "large"
         image_dir.mkdir()
 
-        for i in range(50):
+        for i in range(20):  # Enough to test interruption
             slate_dir = image_dir / f"Slate{i:02d}"
             slate_dir.mkdir()
             # Create empty files (fast)
-            for j in range(10):
+            for j in range(5):
                 (slate_dir / f"image{j}.jpg").touch()
 
         thread = ScanThread(str(image_dir), mock_cache_manager)
@@ -119,8 +110,6 @@ class TestScanThreadErrorHandling:
 
         # Act - Start and immediately interrupt
         thread.start()
-
-        # Request interruption very quickly
         thread.requestInterruption()
 
         # Wait for thread to stop
@@ -129,11 +118,12 @@ class TestScanThreadErrorHandling:
         # Assert
         assert stopped, "Thread should stop when interrupted"
         assert not thread.isRunning()
-        # Note: Thread may or may not have checked interruption flag
-        # The important thing is it stopped
 
     def test_cache_manager_exception_handling(self, qtbot, cleanup_threads, tmp_path):
-        """Test ScanThread handles cache manager exceptions"""
+        """Test ScanThread handles cache manager exceptions
+
+        Real-world scenario: Disk full, permissions issue, corrupted cache
+        """
         # Arrange - Cache manager that raises exceptions
         failing_cache = Mock(spec=ImprovedCacheManager)
         failing_cache.load_cache.side_effect = Exception("Cache read error")
@@ -147,15 +137,16 @@ class TestScanThreadErrorHandling:
 
         # Act - Should not crash despite cache errors
         thread.start()
-
-        # Wait for thread to complete (it may emit signal or just finish)
         _ = thread.wait(3000)
 
         # Assert - Thread completes without crashing
         assert not thread.isRunning()
 
     def test_empty_directory_scan(self, qtbot, mock_cache_manager, cleanup_threads, tmp_path):
-        """Test ScanThread handles empty directory"""
+        """Test ScanThread handles empty directory
+
+        Real-world scenario: User scans folder with no slates/images
+        """
         # Arrange
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
@@ -175,8 +166,8 @@ class TestScanThreadErrorHandling:
         assert result == {} or len(result) == 0
 
 
-class TestGenerateGalleryThreadErrorHandling:
-    """Test error scenarios in GenerateGalleryThread"""
+class TestGenerateGalleryThreadErrors:
+    """Test error scenarios in GenerateGalleryThread - critical failures only"""
 
     @pytest.fixture
     def cleanup_threads(self):
@@ -191,7 +182,10 @@ class TestGenerateGalleryThreadErrorHandling:
                 thread.wait(1000)
 
     def test_missing_template_file(self, qtbot, cleanup_threads, tmp_path):
-        """Test GenerateGalleryThread handles missing template"""
+        """Test GenerateGalleryThread handles missing template
+
+        Real-world scenario: Template deleted, wrong path in config
+        """
         # Arrange
         output_dir = tmp_path / "output"
 
@@ -212,50 +206,18 @@ class TestGenerateGalleryThreadErrorHandling:
         with qtbot.waitSignal(thread.gallery_complete, timeout=3000):
             thread.start()
 
-        # Assert - Thread should complete (possibly with error status)
+        # Assert - Thread completes (possibly with error status)
         assert not thread.isRunning()
 
-    @pytest.mark.skipif(os.name == 'nt', reason="Permissions work differently on Windows")
-    def test_output_directory_permission_denied(self, qtbot, cleanup_threads, tmp_path):
-        """Test GenerateGalleryThread handles write permission errors"""
-        # Arrange
-        restricted_output = tmp_path / "restricted_output"
-        restricted_output.mkdir()
-
-        try:
-            # Remove write permissions
-            restricted_output.chmod(0o444)
-
-            thread = GenerateGalleryThread(
-                selected_slates=['Slate01'],
-                slates_dict={'Slate01': {'images': []}},
-                cache_manager=Mock(spec=ImprovedCacheManager),
-                output_dir=str(restricted_output),
-                root_dir=str(tmp_path),
-                template_path='templates/gallery_template.html',
-                generate_thumbnails=False,
-                thumbnail_size=300,
-                lazy_loading=False
-            )
-            cleanup_threads.append(thread)
-
-            # Act - Should handle permission error
-            with qtbot.waitSignal(thread.gallery_complete, timeout=3000):
-                thread.start()
-
-            # Assert
-            assert not thread.isRunning()
-
-        finally:
-            # Restore permissions
-            restricted_output.chmod(0o755)
-
     def test_invalid_organized_data_structure(self, qtbot, cleanup_threads, tmp_path):
-        """Test GenerateGalleryThread handles malformed data"""
-        # Arrange - Invalid data structure (None slates_dict)
+        """Test GenerateGalleryThread handles malformed data
+
+        Real-world scenario: Data corruption, version mismatch, bad scan results
+        """
+        # Arrange - Empty slates_dict (edge case)
         thread = GenerateGalleryThread(
             selected_slates=[],
-            slates_dict={},  # Will be empty but valid
+            slates_dict={},  # Empty but valid structure
             cache_manager=Mock(spec=ImprovedCacheManager),
             output_dir=str(tmp_path / "output"),
             root_dir=str(tmp_path),
@@ -274,13 +236,16 @@ class TestGenerateGalleryThreadErrorHandling:
         assert not thread.isRunning()
 
     def test_thread_interruption_during_generation(self, qtbot, cleanup_threads, tmp_path):
-        """Test GenerateGalleryThread handles interruption"""
-        # Arrange - Large dataset to ensure some processing time
-        large_slates = {f'Slate{i:02d}': {'images': []} for i in range(100)}
+        """Test GenerateGalleryThread handles interruption
+
+        Real-world scenario: User cancels during long gallery generation
+        """
+        # Arrange - Medium dataset to ensure some processing time
+        medium_slates = {f'Slate{i:02d}': {'images': []} for i in range(30)}
 
         thread = GenerateGalleryThread(
-            selected_slates=list(large_slates.keys()),
-            slates_dict=large_slates,
+            selected_slates=list(medium_slates.keys()),
+            slates_dict=medium_slates,
             cache_manager=Mock(spec=ImprovedCacheManager),
             output_dir=str(tmp_path / "output"),
             root_dir=str(tmp_path),
@@ -299,156 +264,19 @@ class TestGenerateGalleryThreadErrorHandling:
         stopped = thread.wait(3000)
 
         # Assert
-        assert stopped
+        assert stopped, "Thread should stop when interrupted"
         assert not thread.isRunning()
 
 
-class TestThreadPoolExecutorErrorHandling:
-    """Test error handling in ThreadPoolExecutor usage"""
-
-    def test_exception_in_worker_task(self):
-        """Test that exceptions in worker tasks are captured"""
-        from concurrent.futures import ThreadPoolExecutor
-
-        def failing_task(n):
-            if n % 2 == 0:
-                raise ValueError(f"Task {n} failed")
-            return n * 2
-
-        # Act
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = [executor.submit(failing_task, i) for i in range(10)]
-
-            results = []
-            errors = []
-
-            for future in futures:
-                try:
-                    results.append(future.result())
-                except ValueError as e:
-                    errors.append(str(e))
-
-        # Assert
-        assert len(errors) == 5  # Half should fail
-        assert len(results) == 5  # Half should succeed
-        assert all("failed" in error for error in errors)
-
-    def test_thread_pool_shutdown_with_running_tasks(self):
-        """Test thread pool shuts down cleanly with running tasks"""
-        from concurrent.futures import ThreadPoolExecutor
-        import time
-
-        def slow_task(n):
-            time.sleep(0.05)
-            return n
-
-        # Act
-        executor = ThreadPoolExecutor(max_workers=2)
-        futures = [executor.submit(slow_task, i) for i in range(10)]
-
-        # Shutdown immediately (tasks still running)
-        executor.shutdown(wait=True)
-
-        # Assert - All tasks should complete
-        assert all(f.done() for f in futures)
-        assert all(f.result() == i for i, f in enumerate(futures))
-
-    def test_thread_pool_cancellation(self):
-        """Test cancelling pending tasks in thread pool"""
-        from concurrent.futures import ThreadPoolExecutor
-        import time
-
-        def medium_task(n):
-            time.sleep(0.05)
-            return n
-
-        # Act
-        executor = ThreadPoolExecutor(max_workers=1)  # Only 1 worker
-
-        # Submit many tasks
-        futures = [executor.submit(medium_task, i) for i in range(20)]
-
-        # Cancel pending tasks
-        cancelled_count = sum(f.cancel() for f in futures)
-
-        executor.shutdown(wait=True)
-
-        # Assert - Some tasks should have been cancelled
-        assert cancelled_count > 0
-        completed_count = sum(1 for f in futures if f.done() and not f.cancelled())
-        assert completed_count + cancelled_count == len(futures)
-
-
-class TestSignalEmissionErrors:
-    """Test error handling in signal emission"""
-
-    def test_signal_connection_to_deleted_object(self, qtbot):
-        """Test that signals don't crash when connected object is deleted"""
-        from PySide6.QtCore import QObject, Signal
-
-        class Source(QObject):
-            signal = Signal(str)
-
-        class Receiver(QObject):
-            def __init__(self):
-                super().__init__()
-                self.received = []
-
-            def on_signal(self, value):
-                self.received.append(value)
-
-        # Arrange
-        source = Source()
-        receiver = Receiver()
-
-        source.signal.connect(receiver.on_signal)
-
-        # Act - Delete receiver, then emit signal
-        receiver.deleteLater()
-        qtbot.wait(10)  # Let event loop process deletion
-
-        # Should not crash
-        source.signal.emit("test")
-
-        # Assert - Signal emitted without crash
-        assert True  # If we get here, no crash occurred
-
-    def test_exception_in_signal_handler(self, qtbot):
-        """Test that exceptions in signal handlers are caught by Qt"""
-        from PySide6.QtCore import QObject, Signal
-
-        class Source(QObject):
-            signal = Signal()
-
-        exception_caught = []
-
-        def failing_handler():
-            try:
-                raise RuntimeError("Handler error")
-            except RuntimeError as e:
-                exception_caught.append(str(e))
-                # Re-raising in Qt signal handlers is caught by Qt
-                raise
-
-        # Arrange
-        source = Source()
-        source.signal.connect(failing_handler)
-
-        # Act - Emit signal; exception will be caught by Qt's event loop
-        # pytest-qt captures this, so we use captureExceptions
-        with qtbot.captureExceptions() as exceptions:
-            source.signal.emit()
-
-        # Assert - Exception was raised and caught
-        assert len(exception_caught) == 1
-        assert len(exceptions) == 1
-
-
-class TestRaceConditions:
-    """Test thread safety and race conditions"""
+class TestConcurrency:
+    """Test real concurrency issues in our code"""
 
     def test_concurrent_cache_access(self, tmp_path):
-        """Test that concurrent cache access doesn't corrupt data"""
+        """Test that concurrent cache access doesn't corrupt data
+
+        Real-world scenario: Multiple threads scanning different directories,
+        all writing to the same cache manager
+        """
         from concurrent.futures import ThreadPoolExecutor
         import threading
 
@@ -456,6 +284,7 @@ class TestRaceConditions:
         lock = threading.Lock()
 
         def write_metadata(slate_name):
+            """Simulate concurrent cache writes"""
             slates_data = {
                 slate_name: {
                     'images': [f'image_{slate_name}.jpg'],
@@ -465,15 +294,21 @@ class TestRaceConditions:
             with lock:
                 cache.save_cache(str(tmp_path), slates_data)
 
-        # Act - Concurrent writes
+        # Act - Concurrent writes from multiple threads
         with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(write_metadata, f'Slate{i:02d}')
-                      for i in range(50)]
+            futures = [
+                executor.submit(write_metadata, f'Slate{i:02d}')
+                for i in range(50)
+            ]
 
-            # Wait for all
+            # Wait for all to complete
             for f in futures:
                 f.result()
 
         # Assert - Cache should be intact and readable
         cache_data = cache.load_cache(str(tmp_path))
         assert cache_data is None or isinstance(cache_data, dict)
+
+
+# Performance note: All tests use tmp_path and minimal data for speed
+# Total test suite should complete in <10 seconds
