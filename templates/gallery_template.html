@@ -28,7 +28,7 @@
 
         /* CSS Variables for dynamic sizing */
         :root {
-            --image-width: 160px;
+            --image-width: 250px;
         }
 
         /* Body Styles */
@@ -554,8 +554,8 @@
 
     <div class="size-adjustment" id="size-adjustment">
         <label for="size-slider">Size:</label>
-        <input type="range" id="size-slider" min="100" max="600" value="160">
-        <span id="size-value">160px</span>
+        <input type="range" id="size-slider" min="250" max="800" value="250">
+        <span id="size-value">250px</span>
     </div>
 
     <div class="export-button">
@@ -1118,7 +1118,12 @@
                 lastFocusedElement = document.activeElement;
 
                 // Get the image element from the parent container
-                const imageContainer = event.currentTarget.closest('.image-container');
+                // Use event.target to find the clicked element (works with event delegation)
+                const imageContainer = event.target.closest('.image-container');
+                if (!imageContainer) {
+                    showNotification('Image container not found', true);
+                    return;
+                }
                 const image = imageContainer.querySelector('img');
 
                 currentImageIndex = allVisibleImages.indexOf(image);
