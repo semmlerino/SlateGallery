@@ -20,10 +20,10 @@ if not os.path.isdir(log_dir):
     os.makedirs(log_dir)
 
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)  # Changed from DEBUG to reduce log spam
 
 file_handler = logging.handlers.RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5)
-file_handler.setLevel(logging.DEBUG)
+file_handler.setLevel(logging.INFO)  # Changed from DEBUG to reduce log spam
 
 
 console_handler = logging.StreamHandler()
@@ -35,6 +35,10 @@ console_handler.setFormatter(formatter)
 
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
+
+# Suppress verbose third-party library logging
+logging.getLogger('piexif').setLevel(logging.WARNING)  # Suppress EXIF tag spam
+logging.getLogger('PIL').setLevel(logging.WARNING)  # Suppress PIL debug messages
 
 # ----------------------------- Logging Decorator -----------------------------
 
