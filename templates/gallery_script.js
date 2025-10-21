@@ -825,10 +825,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Select/deselect the range
                 selectRange(lastSelectedIndex, currentIndex, shouldCheck);
 
-                // Update last selected index to the current position
-                lastSelectedIndex = currentIndex;
+                // NOTE: We do NOT update lastSelectedIndex here!
+                // The anchor point should stay at the original position so you can
+                // extend or shrink the selection by shift-clicking different positions
             } else {
-                // Normal click - update last selected index
+                // Normal click - update anchor to current position
                 if (currentIndex !== -1) {
                     lastSelectedIndex = currentIndex;
                 }
