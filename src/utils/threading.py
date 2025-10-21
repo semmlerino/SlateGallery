@@ -6,7 +6,7 @@ import threading
 from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Optional, Protocol, runtime_checkable
+from typing import Optional, Protocol, Union, runtime_checkable
 
 from PySide6 import QtCore
 from PySide6.QtCore import Signal
@@ -36,14 +36,68 @@ class CacheManagerProtocol(Protocol):
 # ----------------------------- Worker Threads -----------------------------
 
 
+def _scan_single_root_dir(root_dir: str, exclude_patterns: str) -> dict[str, dict[str, list[str]]]:
+    """Module-level helper function for concurrent directory scanning.
+
+    This function must be at module level (not nested) so ProcessPoolExecutor can pickle it.
+
+    Args:
+        root_dir: Root directory path to scan
+        exclude_patterns: Comma/semicolon-separated exclusion patterns
+
+    Returns:
+        Dictionary with prefixed slate names mapped to slate data
+    """
+    from core.image_processor import scan_directories
+
+    if not os.path.exists(root_dir):
+        logger.warning(f"Skipping non-existent root directory: {root_dir}")
+        return {}
+
+    # Get basename for prefixing
+    root_basename = os.path.basename(root_dir.rstrip(os.sep))
+    if not root_basename:
+        root_basename = root_dir.replace(os.sep, "_").strip("_") or "Root"
+
+    logger.info(f"Scanning: {root_dir} (prefix: {root_basename})")
+
+    # Scan this directory
+    slates = scan_directories(root_dir, exclude_patterns)
+
+    # Prefix slate names to avoid conflicts between different roots
+    prefixed_slates = {}
+    for slate_name, slate_data in slates.items():
+        if slate_name == "/":
+            prefixed_name = f"{root_basename}/Root"
+        else:
+            clean_slate_name = slate_name.lstrip("/")
+            prefixed_name = f"{root_basename}/{clean_slate_name}"
+        prefixed_slates[prefixed_name] = slate_data
+
+    logger.debug(f"Completed scanning {root_dir}: {len(prefixed_slates)} slates")
+    return prefixed_slates
+
+
 class ScanThread(QtCore.QThread):
     scan_complete: Signal = Signal(dict, str)  # type: ignore[misc]
     progress: Signal = Signal(int)  # type: ignore[misc]
 
-    def __init__(self, root_dir: str, cache_manager: CacheManagerProtocol) -> None:
+    def __init__(self, root_dirs: Union[str, list[str]], cache_manager: CacheManagerProtocol, exclude_patterns: str = "") -> None:
+        """Initialize scan thread with one or more root directories.
+
+        Args:
+            root_dirs: Single directory path or list of directory paths to scan
+            cache_manager: Cache manager for processing images
+            exclude_patterns: Comma/semicolon-separated exclusion patterns
+        """
         super().__init__()
-        self.root_dir: str = str(root_dir)
+        # Support both single directory (backwards compatibility) and multiple directories
+        if isinstance(root_dirs, str):
+            self.root_dirs: list[str] = [str(root_dirs)]
+        else:
+            self.root_dirs = [str(d) for d in root_dirs]
         self.cache_manager: CacheManagerProtocol = cache_manager
+        self.exclude_patterns: str = exclude_patterns
         self._is_running: bool = True
 
     def stop(self) -> None:
@@ -55,12 +109,69 @@ class ScanThread(QtCore.QThread):
     @override
     def run(self) -> None:
         try:
-            # Import here to avoid circular imports
+            from concurrent.futures import ProcessPoolExecutor, as_completed
+
             from core.image_processor import scan_directories
 
-            logger.info("Starting directory scan...")
-            slates = scan_directories(self.root_dir)
+            logger.info(f"Starting directory scan for {len(self.root_dirs)} root directory(ies)...")
 
+            # Use appropriate scanning method based on number of directories
+            if len(self.root_dirs) == 1:
+                # Legacy single-directory mode
+                logger.info(f"Scanning single directory: {self.root_dirs[0]}")
+                slates = scan_directories(self.root_dirs[0], self.exclude_patterns)
+            else:
+                # Multi-directory concurrent scanning mode
+                logger.info(f"Scanning {len(self.root_dirs)} directories concurrently...")
+
+                # Limit concurrent scans to avoid overwhelming I/O
+                max_workers = min(len(self.root_dirs), multiprocessing.cpu_count())
+
+                # Execute concurrent scans using module-level helper function
+                merged_slates: dict[str, dict[str, list[str]]] = {}
+                completed_dirs = 0
+
+                with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                    # Submit all scan tasks
+                    future_to_dir = {
+                        executor.submit(_scan_single_root_dir, root_dir, self.exclude_patterns): root_dir
+                        for root_dir in self.root_dirs
+                    }
+
+                    # Process results as they complete
+                    for future in as_completed(future_to_dir):
+                        if not self._is_running:
+                            logger.info("Scan thread stopped by user request")
+                            executor.shutdown(wait=False, cancel_futures=True)
+                            self.scan_complete.emit({}, "Scan cancelled.")
+                            return
+
+                        root_dir = future_to_dir[future]
+                        try:
+                            result_slates = future.result()
+
+                            # Merge results, handling name conflicts
+                            for slate_name, slate_data in result_slates.items():
+                                original_name = slate_name
+                                counter = 2
+                                while slate_name in merged_slates:
+                                    slate_name = f"{original_name}_{counter}"
+                                    counter += 1
+                                    logger.warning(f"Slate name conflict: renamed {original_name} to {slate_name}")
+                                merged_slates[slate_name] = slate_data
+
+                            completed_dirs += 1
+                            progress = int((completed_dirs / len(self.root_dirs)) * 50)  # First 50% is scanning
+                            self.progress.emit(progress)
+                            logger.info(f"Completed scan of {root_dir} ({completed_dirs}/{len(self.root_dirs)})")
+                        except Exception as e:
+                            logger.error(f"Error scanning {root_dir}: {e}", exc_info=True)
+                            completed_dirs += 1
+
+                slates = merged_slates
+                logger.info(f"Concurrent scan complete: {len(slates)} total slates from {len(self.root_dirs)} directories")
+
+            # Process EXIF data for all slates
             processed_slates: int = 0
             total_slates: int = len(slates) if isinstance(slates, dict) else 0
             logger.debug(f"Total slates to process: {total_slates}")
@@ -81,20 +192,21 @@ class ScanThread(QtCore.QThread):
 
                 image_paths = data.get("images", [])
                 processed_images = self.cache_manager.process_images_batch(
-                    image_paths, callback=lambda p: self.progress.emit(int(p))  # type: ignore[arg-type]
+                    image_paths, callback=lambda p: self.progress.emit(50 + int(p / 2))  # Second 50% is EXIF processing  # type: ignore[arg-type]
                 )
                 data["images"] = processed_images  # pyright: ignore[reportArgumentType]
 
                 processed_slates += 1
                 if total_slates > 0:
-                    progress: float = (processed_slates / float(total_slates)) * 100
+                    # Progress: 50-100% for EXIF processing
+                    exif_progress: float = 50 + ((processed_slates / float(total_slates)) * 50)
                 else:
-                    progress = 100
-                self.progress.emit(int(progress))
-                logger.debug(f"Scan progress: {progress:.2f}%")
+                    exif_progress = 100
+                self.progress.emit(int(exif_progress))
+                logger.debug(f"EXIF processing progress: {exif_progress:.2f}%")
 
-            # Save the scanned slates to cache
-            self.cache_manager.save_cache(self.root_dir, slates)
+            # Save the scanned slates to cache (use first root_dir for legacy compatibility)
+            self.cache_manager.save_cache(self.root_dirs[0] if self.root_dirs else "", slates)
 
             self.scan_complete.emit(slates, "Scan complete.")
             logger.info("Scan completed.")
@@ -114,18 +226,31 @@ class GenerateGalleryThread(QtCore.QThread):
         slates_dict: dict[str, object],
         cache_manager: CacheManagerProtocol,
         output_dir: str,
-        root_dir: str,
+        allowed_root_dirs: Union[str, list[str]],
         template_path: str,
         generate_thumbnails: bool,
         thumbnail_size: int = 600,
         lazy_loading: bool = True
     ) -> None:
+        """Initialize gallery generation thread.
+
+        Args:
+            selected_slates: List of slate names to include in gallery
+            slates_dict: Dictionary of all available slates
+            cache_manager: Cache manager for processing images
+            output_dir: Directory to write output HTML
+            allowed_root_dirs: Single root directory or list of allowed root directories for security validation
+            template_path: Path to Jinja2 template
+            generate_thumbnails: Whether to generate thumbnails
+            thumbnail_size: Size of thumbnails (600, 800, or 1200)
+            lazy_loading: Whether to enable lazy loading
+        """
         super().__init__()
         self.selected_slates: list[str] = selected_slates
         self.slates_dict: dict[str, object] = slates_dict
         self.cache_manager: CacheManagerProtocol = cache_manager
         self.output_dir: str = output_dir
-        self.root_dir: str = root_dir
+        self.allowed_root_dirs: Union[str, list[str]] = allowed_root_dirs
         self.template_path: str = template_path
         self.generate_thumbnails: bool = generate_thumbnails
         self.thumbnail_size: int = thumbnail_size
@@ -231,7 +356,7 @@ class GenerateGalleryThread(QtCore.QThread):
                 date_data,  # pyright: ignore[reportArgumentType]
                 self.template_path,
                 self.output_dir,
-                self.root_dir,
+                self.allowed_root_dirs,
                 self.emit_status,
                 self.lazy_loading,
             )
@@ -350,10 +475,10 @@ class GenerateGalleryThread(QtCore.QThread):
                     )
 
             # Generate thumbnails if enabled
-            thumbnails: dict[str, object] = {}
+            thumbnails: dict[str, str] = {}
             thumbnail_path: str = image_path  # Default to original
             if self.generate_thumbnails:
-                thumbnails = generate_thumbnail(image_path, self.thumb_dir, size=self.thumbnail_size)  # type: ignore[assignment]
+                thumbnails = generate_thumbnail(image_path, self.thumb_dir, size=self.thumbnail_size)
                 logger.debug(f"Generated {len(thumbnails)} thumbnails for {filename}")
                 # Get the single thumbnail path
                 size_key: str = f"{self.thumbnail_size}x{self.thumbnail_size}"

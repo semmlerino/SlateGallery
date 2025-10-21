@@ -268,7 +268,7 @@ class TestSecurityAndPathTraversal:
                 date_data=[],
                 template_path=secure_dirs['template'],
                 output_dir=secure_dirs['output_dir'],
-                root_dir=secure_dirs['safe_dir'],
+                allowed_root_dirs=secure_dirs['safe_dir'],
                 status_callback=status_callback
             )
 
@@ -295,7 +295,7 @@ class TestSecurityAndPathTraversal:
                 date_data=[],
                 template_path=str(bad_template),
                 output_dir=secure_dirs['output_dir'],
-                root_dir=secure_dirs['safe_dir'],
+                allowed_root_dirs=secure_dirs['safe_dir'],
                 status_callback=status_callback
             )
 
@@ -327,7 +327,7 @@ class TestSecurityAndPathTraversal:
                     date_data=[],
                     template_path=secure_dirs['template'],
                     output_dir=invalid_output,
-                    root_dir=secure_dirs['safe_dir'],
+                    allowed_root_dirs=secure_dirs['safe_dir'],
                     status_callback=status_callback
                 )
 
@@ -354,7 +354,7 @@ class TestSecurityAndPathTraversal:
                     date_data=[],
                     template_path=secure_dirs['template'],
                     output_dir=secure_dirs['output_dir'],
-                    root_dir=secure_dirs['safe_dir'],
+                    allowed_root_dirs=secure_dirs['safe_dir'],
                     status_callback=status_callback
                 )
 

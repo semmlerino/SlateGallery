@@ -152,7 +152,7 @@ class TestGenerateHtmlGalleryImproved:
             date_data=date_data,
             template_path=gallery_setup['template_path'],
             output_dir=gallery_setup['output_dir'],
-            root_dir=gallery_setup['root_dir'],
+            allowed_root_dirs=gallery_setup['root_dir'],
             status_callback=status_collector
         )
 
@@ -184,7 +184,7 @@ class TestGenerateHtmlGalleryImproved:
             date_data=[],
             template_path=gallery_setup['template_path'],
             output_dir=gallery_setup['output_dir'],
-            root_dir=gallery_setup['root_dir'],
+            allowed_root_dirs=gallery_setup['root_dir'],
             status_callback=status_collector
         )
 
@@ -211,7 +211,7 @@ class TestGenerateHtmlGalleryImproved:
             date_data=[],
             template_path=gallery_setup['template_path'],
             output_dir=new_output,
-            root_dir=gallery_setup['root_dir'],
+            allowed_root_dirs=gallery_setup['root_dir'],
             status_callback=status_collector
         )
 
@@ -230,7 +230,7 @@ class TestGenerateHtmlGalleryImproved:
             date_data=[],
             template_path=str(bad_template),
             output_dir=gallery_setup['output_dir'],
-            root_dir=gallery_setup['root_dir'],
+            allowed_root_dirs=gallery_setup['root_dir'],
             status_callback=status_collector
         )
 
@@ -250,7 +250,7 @@ class TestGenerateHtmlGalleryImproved:
             date_data=[],
             template_path=nonexistent,
             output_dir=gallery_setup['output_dir'],
-            root_dir=gallery_setup['root_dir'],
+            allowed_root_dirs=gallery_setup['root_dir'],
             status_callback=status_collector
         )
 
@@ -281,7 +281,7 @@ class TestGenerateHtmlGalleryImproved:
             date_data=[],
             template_path=gallery_setup['template_path'],
             output_dir=gallery_setup['output_dir'],
-            root_dir=gallery_setup['root_dir'],
+            allowed_root_dirs=gallery_setup['root_dir'],
             status_callback=status_collector
         )
 
@@ -303,7 +303,7 @@ class TestGenerateHtmlGalleryImproved:
                 date_data=[],
                 template_path=gallery_setup['template_path'],
                 output_dir=gallery_setup['output_dir'],
-                root_dir=gallery_setup['root_dir'],
+                allowed_root_dirs=gallery_setup['root_dir'],
                 status_callback=collector
             )
             assert success is True
@@ -326,7 +326,7 @@ class TestGenerateHtmlGalleryImproved:
             date_data=[],
             template_path=gallery_setup['template_path'],
             output_dir=gallery_setup['output_dir'],
-            root_dir=gallery_setup['root_dir'],
+            allowed_root_dirs=gallery_setup['root_dir'],
             status_callback=faulty_callback
         )
 
@@ -395,7 +395,7 @@ class TestGalleryGeneratorIntegration:
             date_data=[],
             template_path=str(template_file),
             output_dir=str(output_dir),
-            root_dir=str(root_dir),
+            allowed_root_dirs=str(root_dir),
             status_callback=collector
         )
 

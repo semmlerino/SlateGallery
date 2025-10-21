@@ -126,7 +126,7 @@ class TestGenerateHtmlGallery:
             date_data=date_data,
             template_path=simple_template,
             output_dir=str(temp_dirs['output_dir']),
-            root_dir=str(temp_dirs['root_dir']),
+            allowed_root_dirs=str(temp_dirs['root_dir']),
             status_callback=status_callback
         )
 
@@ -161,7 +161,7 @@ class TestGenerateHtmlGallery:
             date_data=[],
             template_path=simple_template,
             output_dir=str(nonexistent_output),
-            root_dir=str(temp_dirs['root_dir']),
+            allowed_root_dirs=str(temp_dirs['root_dir']),
             status_callback=status_callback
         )
 
@@ -180,7 +180,7 @@ class TestGenerateHtmlGallery:
             date_data=[],
             template_path=simple_template,
             output_dir=str(temp_dirs['output_dir']),
-            root_dir=str(temp_dirs['root_dir']),
+            allowed_root_dirs=str(temp_dirs['root_dir']),
             status_callback=status_callback
         )
 
@@ -209,7 +209,7 @@ class TestGenerateHtmlGallery:
             date_data=[],
             template_path=str(invalid_template),
             output_dir=str(temp_dirs['output_dir']),
-            root_dir=str(temp_dirs['root_dir']),
+            allowed_root_dirs=str(temp_dirs['root_dir']),
             status_callback=status_callback
         )
 
@@ -232,7 +232,7 @@ class TestGenerateHtmlGallery:
             date_data=[],
             template_path=nonexistent_template,
             output_dir=str(temp_dirs['output_dir']),
-            root_dir=str(temp_dirs['root_dir']),
+            allowed_root_dirs=str(temp_dirs['root_dir']),
             status_callback=status_callback
         )
 
@@ -268,7 +268,7 @@ class TestGenerateHtmlGallery:
             date_data=[],
             template_path=simple_template,
             output_dir=str(temp_dirs['output_dir']),
-            root_dir=str(temp_dirs['root_dir']),
+            allowed_root_dirs=str(temp_dirs['root_dir']),
             status_callback=status_callback
         )
 
@@ -277,7 +277,7 @@ class TestGenerateHtmlGallery:
 
         # Check that the callback was called with a security warning
         warning_calls = [call for call in status_callback.call_args_list
-                        if 'outside of root directory' in str(call)]
+                        if 'outside of allowed directories' in str(call)]
         assert len(warning_calls) > 0
 
     def test_generate_html_gallery_web_path_generation(self, temp_dirs, simple_template, sample_gallery_data):
@@ -294,7 +294,7 @@ class TestGenerateHtmlGallery:
             date_data=[],
             template_path=simple_template,
             output_dir=str(temp_dirs['output_dir']),
-            root_dir=str(temp_dirs['root_dir']),
+            allowed_root_dirs=str(temp_dirs['root_dir']),
             status_callback=status_callback
         )
 
@@ -336,7 +336,7 @@ class TestGenerateHtmlGallery:
             date_data=[],
             template_path=simple_template,
             output_dir=str(temp_dirs['output_dir']),
-            root_dir=str(temp_dirs['root_dir']),
+            allowed_root_dirs=str(temp_dirs['root_dir']),
             status_callback=status_callback
         )
 
@@ -365,7 +365,7 @@ class TestGenerateHtmlGallery:
             date_data=[],
             template_path=simple_template,
             output_dir=str(temp_dirs['output_dir']),
-            root_dir=str(temp_dirs['root_dir']),
+            allowed_root_dirs=str(temp_dirs['root_dir']),
             status_callback=status_callback
         )
 
@@ -406,7 +406,7 @@ class TestGenerateHtmlGallery:
             date_data=[],
             template_path=simple_template,
             output_dir=str(temp_dirs['output_dir']),
-            root_dir=str(temp_dirs['root_dir']),
+            allowed_root_dirs=str(temp_dirs['root_dir']),
             status_callback=status_callback
         )
 
@@ -433,7 +433,7 @@ class TestGenerateHtmlGallery:
                 date_data=[],
                 template_path=simple_template,
                 output_dir=str(readonly_output),
-                root_dir=str(temp_dirs['root_dir']),
+                allowed_root_dirs=str(temp_dirs['root_dir']),
                 status_callback=status_callback
             )
 
@@ -476,6 +476,15 @@ class TestGalleryGeneratorIntegration:
             template_content = actual_template.read_text()
             test_template = temp_dirs['template_dir'] / 'gallery_template.html'
             test_template.write_text(template_content)
+
+            # Also copy CSS and JS files that the template includes
+            css_file = Path(__file__).parent.parent / 'templates' / 'gallery_styles.css'
+            if css_file.exists():
+                (temp_dirs['template_dir'] / 'gallery_styles.css').write_text(css_file.read_text())
+
+            js_file = Path(__file__).parent.parent / 'templates' / 'gallery_script.js'
+            if js_file.exists():
+                (temp_dirs['template_dir'] / 'gallery_script.js').write_text(js_file.read_text())
         else:
             # Fallback simple template if actual template not found
             test_template = temp_dirs['template_dir'] / 'simple_template.html'
@@ -546,7 +555,7 @@ class TestGalleryGeneratorIntegration:
             date_data=[],
             template_path=str(test_template),
             output_dir=str(temp_dirs['output_dir']),
-            root_dir=str(temp_dirs['root_dir']),
+            allowed_root_dirs=str(temp_dirs['root_dir']),
             status_callback=capture_status
         )
 

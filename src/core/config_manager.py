@@ -21,10 +21,23 @@ if not os.path.isdir(CACHE_DIR):
 
 
 @log_function
-def load_config() -> tuple[str, list[str], bool, int, bool, str]:
+def load_config() -> tuple[str, list[str], list[str], bool, int, bool, str]:
+    """Load configuration from config file.
+
+    Returns:
+        tuple containing:
+        - current_slate_dir: Currently active directory (legacy)
+        - slate_dirs: List of all cached directories
+        - selected_slate_dirs: List of directories selected for scanning
+        - generate_thumbnails: Whether to generate thumbnails
+        - thumbnail_size: Thumbnail size (600, 800, or 1200)
+        - lazy_loading: Whether lazy loading is enabled
+        - exclude_patterns: Comma/semicolon-separated exclusion patterns
+    """
     config = configparser.ConfigParser()
     slate_dirs: list[str] = []
     current_slate_dir: str = ""
+    selected_slate_dirs: list[str] = []
     generate_thumbnails: bool = False  # Default to original behavior
     thumbnail_size: int = 600  # Default thumbnail size
     lazy_loading: bool = True  # Default to lazy loading enabled
@@ -47,6 +60,21 @@ def load_config() -> tuple[str, list[str], bool, int, bool, str]:
             except (configparser.NoSectionError, configparser.NoOptionError):
                 slate_dirs = []
                 logger.warning("slate_dirs not found in config.")
+
+            try:
+                selected_slate_dirs_str = config.get("Settings", "selected_slate_dirs")
+                selected_slate_dirs = selected_slate_dirs_str.split("|") if selected_slate_dirs_str else []
+                # Filter out empty strings
+                selected_slate_dirs = [d for d in selected_slate_dirs if d]
+                logger.info(f"Loaded selected_slate_dirs from config: {selected_slate_dirs}")
+            except (configparser.NoSectionError, configparser.NoOptionError):
+                # Backwards compatibility: default to current_slate_dir if it exists
+                if current_slate_dir and os.path.exists(current_slate_dir):
+                    selected_slate_dirs = [current_slate_dir]
+                    logger.info(f"selected_slate_dirs not found in config, defaulting to [{current_slate_dir}]")
+                else:
+                    selected_slate_dirs = []
+                    logger.info("selected_slate_dirs not found in config, defaulting to empty list.")
 
             try:
                 generate_thumbnails = config.getboolean("Settings", "generate_thumbnails")
@@ -85,6 +113,7 @@ def load_config() -> tuple[str, list[str], bool, int, bool, str]:
             logger.debug(traceback.format_exc())
             current_slate_dir = ""
             slate_dirs = []
+            selected_slate_dirs = []
             generate_thumbnails = False
             thumbnail_size = 600
             lazy_loading = True
@@ -92,28 +121,42 @@ def load_config() -> tuple[str, list[str], bool, int, bool, str]:
     else:
         current_slate_dir = ""
         slate_dirs = []
+        selected_slate_dirs = []
         generate_thumbnails = False
         thumbnail_size = 600
         lazy_loading = True
         exclude_patterns = ""
         logger.warning("Config file not found. Using default settings.")
-    return current_slate_dir, slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns
+    return current_slate_dir, slate_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns
 
 
 @log_function
 def save_config(
     current_slate_dir: str,
     slate_dirs: list[str],
+    selected_slate_dirs: list[str],
     generate_thumbnails: bool = False,
     thumbnail_size: int = 600,
     lazy_loading: bool = True,
     exclude_patterns: str = ""
 ) -> None:
+    """Save configuration to config file.
+
+    Args:
+        current_slate_dir: Currently active directory (legacy)
+        slate_dirs: List of all cached directories
+        selected_slate_dirs: List of directories selected for scanning
+        generate_thumbnails: Whether to generate thumbnails
+        thumbnail_size: Thumbnail size (600, 800, or 1200)
+        lazy_loading: Whether lazy loading is enabled
+        exclude_patterns: Comma/semicolon-separated exclusion patterns
+    """
     config = configparser.ConfigParser()
     if not config.has_section("Settings"):
         config.add_section("Settings")
     config.set("Settings", "current_slate_dir", current_slate_dir)
     config.set("Settings", "slate_dirs", "|".join(slate_dirs))
+    config.set("Settings", "selected_slate_dirs", "|".join(selected_slate_dirs))
     config.set("Settings", "generate_thumbnails", str(generate_thumbnails))
     config.set("Settings", "thumbnail_size", str(thumbnail_size))
     config.set("Settings", "lazy_loading", str(lazy_loading))
@@ -121,7 +164,7 @@ def save_config(
     try:
         with codecs.open(CONFIG_FILE, "w", encoding="utf-8") as configfile:
             config.write(configfile)
-        logger.info(f"Configuration saved: current_slate_dir={current_slate_dir}, slate_dirs={slate_dirs}, generate_thumbnails={generate_thumbnails}, thumbnail_size={thumbnail_size}, lazy_loading={lazy_loading}, exclude_patterns={exclude_patterns}")
+        logger.info(f"Configuration saved: current_slate_dir={current_slate_dir}, slate_dirs={slate_dirs}, selected_slate_dirs={selected_slate_dirs}, generate_thumbnails={generate_thumbnails}, thumbnail_size={thumbnail_size}, lazy_loading={lazy_loading}, exclude_patterns={exclude_patterns}")
     except Exception as e:
         logger.error(f"Error saving configuration: {e}")
         logger.debug(traceback.format_exc())

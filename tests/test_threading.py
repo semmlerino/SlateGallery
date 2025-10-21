@@ -287,7 +287,7 @@ class TestGenerateGalleryThreadImproved:
             slates_dict=gallery_test_environment['slates_dict'],
             cache_manager=gallery_test_environment['cache_manager'],
             output_dir=gallery_test_environment['output_dir'],
-            root_dir=gallery_test_environment['images_dir'],
+            allowed_root_dirs=gallery_test_environment['images_dir'],
             template_path=gallery_test_environment['template_path'],
             generate_thumbnails=False,
             thumbnail_size=600
@@ -330,7 +330,7 @@ class TestGenerateGalleryThreadImproved:
             slates_dict=gallery_test_environment['slates_dict'],
             cache_manager=gallery_test_environment['cache_manager'],
             output_dir=gallery_test_environment['output_dir'],
-            root_dir=gallery_test_environment['images_dir'],
+            allowed_root_dirs=gallery_test_environment['images_dir'],
             template_path=gallery_test_environment['template_path'],
             generate_thumbnails=True,  # Enable thumbnails
             thumbnail_size=800
@@ -361,7 +361,7 @@ class TestGenerateGalleryThreadImproved:
             slates_dict=gallery_test_environment['slates_dict'],
             cache_manager=gallery_test_environment['cache_manager'],
             output_dir=gallery_test_environment['output_dir'],
-            root_dir=gallery_test_environment['images_dir'],
+            allowed_root_dirs=gallery_test_environment['images_dir'],
             template_path='/nonexistent/template.html',
             generate_thumbnails=False,
             thumbnail_size=600
@@ -417,7 +417,7 @@ class TestGenerateGalleryThreadImproved:
             slates_dict=gallery_test_environment['slates_dict'],
             cache_manager=gallery_test_environment['cache_manager'],
             output_dir=gallery_test_environment['output_dir'],
-            root_dir=gallery_test_environment['images_dir'],
+            allowed_root_dirs=gallery_test_environment['images_dir'],
             template_path=gallery_test_environment['template_path'],
             generate_thumbnails=False,  # Thumbnails disabled
             thumbnail_size=600
@@ -450,7 +450,7 @@ class TestGenerateGalleryThreadImproved:
             slates_dict=gallery_test_environment['slates_dict'],
             cache_manager=gallery_test_environment['cache_manager'],
             output_dir=gallery_test_environment['output_dir'],
-            root_dir=gallery_test_environment['images_dir'],
+            allowed_root_dirs=gallery_test_environment['images_dir'],
             template_path=gallery_test_environment['template_path'],
             generate_thumbnails=False,
             thumbnail_size=600
@@ -486,7 +486,7 @@ class TestGenerateGalleryThreadImproved:
             slates_dict=gallery_test_environment['slates_dict'],
             cache_manager=gallery_test_environment['cache_manager'],
             output_dir=gallery_test_environment['output_dir'],
-            root_dir=gallery_test_environment['images_dir'],
+            allowed_root_dirs=gallery_test_environment['images_dir'],
             template_path=gallery_test_environment['template_path'],
             generate_thumbnails=False,
             thumbnail_size=600
@@ -572,7 +572,7 @@ class TestThreadingIntegrationImproved:
                 slates_dict=slates_dict,
                 cache_manager=cache_manager,
                 output_dir=str(output_dir),
-                root_dir=str(images_dir),
+                allowed_root_dirs=str(images_dir),
                 template_path=str(template),
                 generate_thumbnails=False,
                 thumbnail_size=600

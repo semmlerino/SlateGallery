@@ -1,6 +1,7 @@
 """Core components for SlateGallery."""
 
 from collections.abc import Callable
+from typing import Union
 
 from .cache_manager import ImprovedCacheManager
 from .config_manager import load_config as _load_config
@@ -13,11 +14,11 @@ from .image_processor import scan_directories as _scan_directories
 
 
 # Re-export with proper type annotations
-def load_config() -> tuple[str, list[str], bool, int, bool, str]:
+def load_config() -> tuple[str, list[str], list[str], bool, int, bool, str]:
     """Load configuration from ~/.slate_gallery/config.ini.
 
     Returns:
-        Tuple of (current_slate_dir, slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns)
+        Tuple of (current_slate_dir, slate_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns)
     """
     return _load_config()
 
@@ -25,6 +26,7 @@ def load_config() -> tuple[str, list[str], bool, int, bool, str]:
 def save_config(
     current_slate_dir: str,
     slate_dirs: list[str],
+    selected_slate_dirs: list[str],
     generate_thumbnails: bool = False,
     thumbnail_size: int = 600,
     lazy_loading: bool = True,
@@ -35,12 +37,13 @@ def save_config(
     Args:
         current_slate_dir: Current slate directory path
         slate_dirs: List of slate directory paths
+        selected_slate_dirs: List of directories selected for scanning
         generate_thumbnails: Whether to generate thumbnails
         thumbnail_size: Thumbnail size (600, 800, or 1200)
         lazy_loading: Whether to enable lazy loading in gallery
         exclude_patterns: Patterns to exclude from slate list (comma-separated wildcards)
     """
-    _save_config(current_slate_dir, slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns)
+    _save_config(current_slate_dir, slate_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns)
 
 
 def generate_html_gallery(
@@ -49,7 +52,7 @@ def generate_html_gallery(
     date_data: list[DateData],
     template_path: str,
     output_dir: str,
-    root_dir: str,
+    allowed_root_dirs: Union[str, list[str]],
     status_callback: Callable[[str], None],
     lazy_loading: bool = True
 ) -> bool:
@@ -61,7 +64,7 @@ def generate_html_gallery(
         date_data: List of date data dictionaries
         template_path: Path to Jinja2 template file
         output_dir: Directory to write generated HTML
-        root_dir: Root directory for image paths
+        allowed_root_dirs: Single root directory or list of allowed root directories for security validation
         status_callback: Callback function for status updates
         lazy_loading: Whether to enable lazy loading in gallery
 
@@ -70,7 +73,7 @@ def generate_html_gallery(
     """
     return _generate_html_gallery(
         gallery_data, focal_length_data, date_data,
-        template_path, output_dir, root_dir,
+        template_path, output_dir, allowed_root_dirs,
         status_callback, lazy_loading
     )
 

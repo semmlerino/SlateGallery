@@ -73,9 +73,11 @@ class TestLazyLoadingIntegration:
         save_config(
             str(gallery_environment['images_dir']),
             [str(gallery_environment['images_dir'])],
+            [str(gallery_environment['images_dir'])],
             generate_thumbnails=True,
             thumbnail_size=600,
-            lazy_loading=True
+            lazy_loading=True,
+            exclude_patterns=""
         )
 
         # Scan directories
@@ -91,7 +93,7 @@ class TestLazyLoadingIntegration:
             date_data=[],
             template_path=str(gallery_environment['template']),
             output_dir=str(gallery_environment['output_dir']),
-            root_dir=str(gallery_environment['images_dir']),
+            allowed_root_dirs=str(gallery_environment['images_dir']),
             status_callback=lambda x: None,
             lazy_loading=True
         )
@@ -115,7 +117,7 @@ class TestLazyLoadingIntegration:
             date_data=[],
             template_path=str(gallery_environment['template']),
             output_dir=str(gallery_environment['output_dir']),
-            root_dir=str(gallery_environment['images_dir']),
+            allowed_root_dirs=str(gallery_environment['images_dir']),
             status_callback=lambda x: None,
             lazy_loading=False
         )
@@ -147,7 +149,7 @@ class TestLazyLoadingIntegration:
             date_data=[],
             template_path=str(gallery_environment['template']),
             output_dir=str(gallery_environment['output_dir']),
-            root_dir=str(gallery_environment['images_dir']),
+            allowed_root_dirs=str(gallery_environment['images_dir']),
             status_callback=lambda x: None,
             lazy_loading=True
         )
@@ -163,28 +165,30 @@ class TestConfigurationPersistence:
     """Test configuration persistence with all parameters."""
 
     def test_all_config_parameters_persist(self, tmp_path, monkeypatch):
-        """Test that all 5 configuration parameters persist correctly."""
+        """Test that all 7 configuration parameters persist correctly."""
         config_file = tmp_path / 'test_config.ini'
         monkeypatch.setattr('src.core.config_manager.CONFIG_FILE', str(config_file))
 
         # Test various configurations
         test_configs = [
-            ("/path1", ["/path1", "/path2"], True, 600, True),
-            ("/path3", ["/path3", "/path4", "/path5"], False, 800, False),
-            ("/special/path with spaces", ["/dir1"], True, 1200, True),
+            ("/path1", ["/path1", "/path2"], ["/path1"], True, 600, True, "*.tmp"),
+            ("/path3", ["/path3", "/path4", "/path5"], ["/path3", "/path4"], False, 800, False, ""),
+            ("/special/path with spaces", ["/dir1"], ["/dir1"], True, 1200, True, "test*"),
         ]
 
-        for current_dir, slate_dirs, gen_thumb, thumb_size, lazy in test_configs:
+        for current_dir, slate_dirs, selected_dirs, gen_thumb, thumb_size, lazy, exclude in test_configs:
             # Save configuration
-            save_config(current_dir, slate_dirs, gen_thumb, thumb_size, lazy)
+            save_config(current_dir, slate_dirs, selected_dirs, gen_thumb, thumb_size, lazy, exclude)
 
             # Load and verify
             loaded = load_config()
             assert loaded[0] == current_dir
             assert loaded[1] == slate_dirs
-            assert loaded[2] == gen_thumb
-            assert loaded[3] == thumb_size
-            assert loaded[4] == lazy
+            assert loaded[2] == selected_dirs
+            assert loaded[3] == gen_thumb
+            assert loaded[4] == thumb_size
+            assert loaded[5] == lazy
+            assert loaded[6] == exclude
 
     def test_config_backwards_compatibility(self, tmp_path, monkeypatch):
         """Test that old config files without lazy_loading still work."""
@@ -200,7 +204,7 @@ thumbnail_size = 800
 """)
 
         # Should load with default lazy_loading=True
-        current_dir, slate_dirs, gen_thumb, thumb_size, lazy = load_config()
+        current_dir, slate_dirs, selected_slate_dirs, gen_thumb, thumb_size, lazy, exclude_patterns = load_config()
         assert current_dir == "/old/path"
         assert slate_dirs == ["/old/path", "/another/path"]
         assert gen_thumb is True
@@ -282,7 +286,7 @@ class TestMixedImageFormats:
             slates_dict=slates_dict,
             cache_manager=cache_manager,
             output_dir=str(output_dir),
-            root_dir=str(mixed_format_gallery['images_dir']),
+            allowed_root_dirs=str(mixed_format_gallery['images_dir']),
             template_path=str(template),
             generate_thumbnails=True,
             thumbnail_size=600,
@@ -367,7 +371,7 @@ class TestErrorRecovery:
                 date_data=[],
                 template_path=str(template),
                 output_dir=str(output_dir),
-                root_dir=str(tmp_path),
+                allowed_root_dirs=str(tmp_path),
                 status_callback=lambda x: None,
                 lazy_loading=True
             )
@@ -403,7 +407,7 @@ class TestErrorRecovery:
             date_data=[],
             template_path=str(template),
             output_dir=invalid_output,
-            root_dir=str(tmp_path),
+            allowed_root_dirs=str(tmp_path),
             status_callback=lambda x: None,
             lazy_loading=True
         )
@@ -494,9 +498,11 @@ class TestEndToEndWorkflow:
         save_config(
             str(photos_dir),
             [str(photos_dir)],
+            [str(photos_dir)],
             generate_thumbnails=True,
             thumbnail_size=800,
-            lazy_loading=True
+            lazy_loading=True,
+            exclude_patterns=""
         )
 
         # Step 1: Scan directories
@@ -543,7 +549,7 @@ class TestEndToEndWorkflow:
             slates_dict=slates_dict,
             cache_manager=cache_manager,
             output_dir=str(output_dir),
-            root_dir=str(photos_dir),
+            allowed_root_dirs=str(photos_dir),
             template_path=str(template),
             generate_thumbnails=True,
             thumbnail_size=800,
@@ -583,16 +589,18 @@ class TestEndToEndWorkflow:
         save_config(
             str(photos_dir),
             [str(photos_dir)],
+            [str(photos_dir)],
             generate_thumbnails=False,
             thumbnail_size=600,
-            lazy_loading=False
+            lazy_loading=False,
+            exclude_patterns=""
         )
 
         # Reload config
         loaded = load_config()
-        assert loaded[2] is False  # generate_thumbnails
-        assert loaded[3] == 600    # thumbnail_size
-        assert loaded[4] is False  # lazy_loading
+        assert loaded[3] is False  # generate_thumbnails
+        assert loaded[4] == 600    # thumbnail_size
+        assert loaded[5] is False  # lazy_loading
 
 
 class TestCacheInvalidation:

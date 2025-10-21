@@ -20,7 +20,7 @@ sys.path.insert(0, str(os.path.dirname(os.path.abspath(__file__))))
 # Qt imports
 from PySide6 import QtWidgets
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QColor
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -34,7 +34,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QMainWindow,
-    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
@@ -92,10 +91,17 @@ COLOR_ACCENT_TEXT = "#BF360C"
 
 
 class CustomFileDialog(QFileDialog):
-    def __init__(self, *args):
+    def __init__(self, *args, **kwargs):
+        multi_select = kwargs.pop('multi_select', False)
         QFileDialog.__init__(self, *args)
         self.setOption(QFileDialog.Option.DontUseNativeDialog, True)
         self.setFileMode(QFileDialog.FileMode.Directory)
+
+        # Enable multi-selection if requested
+        if multi_select:
+            # Find the list/tree view and enable multi-selection
+            for view in self.findChildren(QtWidgets.QAbstractItemView):
+                view.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
 
         # Create path input widget (though it appears unused in current implementation)
         self.path_input = QLineEdit()
@@ -164,7 +170,7 @@ class GalleryGeneratorApp(QMainWindow):
         self.setGeometry(100, 100, 900, 700)
 
         # Load configuration with multiple directories
-        self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref = load_config()
+        self.current_root_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref = load_config()
         self.output_dir = os.path.expanduser("~")
 
         self.cache_manager = ImprovedCacheManager(
@@ -174,7 +180,7 @@ class GalleryGeneratorApp(QMainWindow):
         if not self.current_root_dir:
             self.current_root_dir = os.path.expanduser("~")
             self.cached_root_dirs.append(self.current_root_dir)
-            save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
+            save_config(self.current_root_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
             logger.info(f"Default root directory set to home directory: {self.current_root_dir}")
 
         self.slates_dict = {}
@@ -194,6 +200,9 @@ class GalleryGeneratorApp(QMainWindow):
         # Set up the UI
         self.setup_style()
         self.initUI()
+
+        # Restore selected directories display from config
+        self.update_selected_dirs_display()
 
         # Load cached slates if available
         if self.current_root_dir:
@@ -444,49 +453,35 @@ class GalleryGeneratorApp(QMainWindow):
         dir_layout = QGridLayout()
         dir_layout.setSpacing(SPACING_SM)
 
-        lbl_root = QLabel("Photo Directory:")
-        dir_layout.addWidget(lbl_root, 0, 0)
+        lbl_root = QLabel("Photo Directories:")
+        lbl_root.setToolTip("Select one or more directories to scan")
+        dir_layout.addWidget(lbl_root, 0, 0, Qt.AlignmentFlag.AlignTop)
 
-        self.cmb_root = QComboBox()
-        self.cmb_root.setEditable(True)  # Allow manual input
-        self.cmb_root.setToolTip("Select or enter the path to your photo directory")
-        self.cmb_root.addItems(self.cached_root_dirs)
-        current_index = self.cmb_root.findText(self.current_root_dir)
-        if current_index != -1:
-            self.cmb_root.setCurrentIndex(current_index)
-        else:
-            self.cmb_root.setCurrentIndex(0)
-            self.cmb_root.setEditText(self.current_root_dir)
-        _ = self.cmb_root.currentIndexChanged.connect(self.on_root_dir_changed)
+        # Create text display for selected directories
+        self.selected_dirs_display = QtWidgets.QPlainTextEdit()
+        self.selected_dirs_display.setReadOnly(True)
+        self.selected_dirs_display.setMaximumHeight(100)
+        self.selected_dirs_display.setPlaceholderText("No directories selected - click Browse to select")
+        self.selected_dirs_display.setToolTip("Selected directories for scanning")
+        dir_layout.addWidget(self.selected_dirs_display, 0, 1, 2, 1)  # Span 2 rows
 
-        self.cmb_root.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
-        self.cmb_root.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        _ = self.cmb_root.customContextMenuRequested.connect(self.open_context_menu)
-
-        dir_layout.addWidget(self.cmb_root, 0, 1)
-
-        btn_browse_root = QPushButton("Browse")
+        # Browse button
+        btn_browse_root = QPushButton("Browse...")
         btn_browse_root.setObjectName("tertiaryButton")
+        btn_browse_root.setToolTip("Select one or more directories to scan (multi-select enabled)")
         _ = btn_browse_root.clicked.connect(self.on_browse_root)
-        dir_layout.addWidget(btn_browse_root, 0, 2)
-
-        btn_manage = QPushButton("Manage...")
-        btn_manage.setObjectName("tertiaryButton")
-        btn_manage.setToolTip("Manage saved directories")
-        _ = btn_manage.clicked.connect(self.open_manage_directories_dialog)
-        dir_layout.addWidget(btn_manage, 0, 3)
+        dir_layout.addWidget(btn_browse_root, 0, 2, 2, 1)  # Span 2 rows, align top
 
         dir_layout.setColumnStretch(0, 0)
         dir_layout.setColumnStretch(1, 1)
         dir_layout.setColumnStretch(2, 0)
-        dir_layout.setColumnStretch(3, 0)
 
-        # Add Scan button in second row of directory card
-        btn_scan = QPushButton("Scan Directory")
+        # Add Scan button in third row of directory card
+        btn_scan = QPushButton("Scan Selected Directories")
         btn_scan.setObjectName("secondaryButton")  # Visible but not primary
-        btn_scan.setToolTip("Scan the selected directory for photo collections")
+        btn_scan.setToolTip("Scan all checked directories for photo collections")
         _ = btn_scan.clicked.connect(self.on_scan)
-        dir_layout.addWidget(btn_scan, 1, 1, 1, 3)  # Row 1, span across columns 1-3
+        dir_layout.addWidget(btn_scan, 2, 1, 1, 2)  # Row 2, span across columns 1-2
 
         dir_card.content_layout.addLayout(dir_layout)
         main_layout.addWidget(dir_card)
@@ -661,186 +656,121 @@ class GalleryGeneratorApp(QMainWindow):
 
         main_layout.addLayout(status_layout)
 
-    def open_context_menu(self, position):
-        menu = QMenu()
-        delete_action = QAction("Delete Cached Directory", self)
-        _ = delete_action.triggered.connect(self.delete_cached_directory)
-        _ = menu.addAction(delete_action)
-        if len(self.cached_root_dirs) <= 1:
-            delete_action.setEnabled(False)
-        _ = menu.exec_(self.cmb_root.mapToGlobal(position))
-
-    @log_function
-    def delete_cached_directory(self, _checked=False):
-        current_dir = str(self.cmb_root.currentText()).strip()
-        if current_dir in self.cached_root_dirs:
-            reply = QMessageBox.question(
-                self,
-                "Delete Cached Directory",
-                f"Are you sure you want to delete the cached directory:\\n\\n{current_dir}?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                self.cached_root_dirs.remove(current_dir)
-                save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
-                index = self.cmb_root.findText(current_dir)
-                if index != -1:
-                    _ = self.cmb_root.blockSignals(True)
-                    _ = self.cmb_root.removeItem(index)
-                    _ = self.cmb_root.blockSignals(False)
-                    logger.info(f"Deleted cached directory: {current_dir}")
-                else:
-                    logger.warning(f"Directory not found in QComboBox: {current_dir}")
-                self.slates_dict = {}
-                self.filtered_slates = {}
-                self.unique_focal_lengths = set()
-                self.list_slates.clear()
-                self.update_status(f"Deleted cached directory: {current_dir}")
-
-                if self.cached_root_dirs:
-                    new_dir = self.cached_root_dirs[0]
-                    self.cmb_root.setCurrentIndex(0)
-                    self.current_root_dir = new_dir
-                    self.on_scan()
-                    logger.info(f"Switched to new current directory: {new_dir}")
-                else:
-                    self.current_root_dir = ""
-                    self.update_status("No cached directories available. Please add a new slate directory.")
-                    _ = QMessageBox.information(
-                        self,
-                        "No Directories",
-                        "All cached directories have been deleted. Please add a new slate directory.",
-                        QMessageBox.StandardButton.Ok,
-                    )
-                    logger.info("All cached directories deleted. Awaiting new directory selection.")
-        else:
-            _ = QMessageBox.warning(self, "Deletion Error", "The selected directory is not in the cached list.")
-            logger.warning(f"Attempted to delete a non-cached directory: {current_dir}")
-
-    @log_function
-    def on_root_dir_changed(self, _index):
-        selected_dir = str(self.cmb_root.currentText()).strip()
-        if selected_dir and selected_dir not in self.cached_root_dirs:
-            self.update_cached_dirs(selected_dir)
-            logger.info(f"New slate directory added to cache: {selected_dir}")
-        self.on_scan()
 
     @log_function
     def update_cached_dirs(self, new_dir):
         if new_dir and new_dir not in self.cached_root_dirs:
             self.cached_root_dirs.append(new_dir)
-            save_config(new_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
+            save_config(new_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
             logger.info(f"Added new directory to cached slate directories: {new_dir}")
 
+    @log_function
     def on_browse_root(self):
+        """Browse for directories with multi-select support."""
         try:
-            dialog = CustomFileDialog(self, "Select Slate Directory", self.current_root_dir)
+            # Use current directory or first cached as starting point
+            start_dir = self.current_root_dir if self.current_root_dir else (self.cached_root_dirs[0] if self.cached_root_dirs else os.path.expanduser("~"))
+
+            dialog = CustomFileDialog(self, "Select Photo Directories (Ctrl/Cmd+Click for multiple)", start_dir, multi_select=True)
+
             if dialog.exec() == QFileDialog.DialogCode.Accepted:
                 selected = dialog.selectedFiles()
                 if selected:
-                    new_dir = str(selected[0])
-                    self.cmb_root.setEditText(new_dir)  # Update ComboBox
-                    self.update_cached_dirs(new_dir)
-                    logger.info(f"Slate directory set to: {new_dir}")
-        except Exception as e:
-            self.update_status(f"Error in slate directory selection: {e}")
-            logger.error(f"Error in slate directory selection: {e}", exc_info=True)
+                    # Replace selection with newly selected directories
+                    self.selected_slate_dirs = [str(d) for d in selected]
 
-    @log_function
-    def open_manage_directories_dialog(self):
-        """Open a dialog to manage saved directories."""
-        if not self.cached_root_dirs:
-            _ = QMessageBox.information(
-                self,
-                "No Directories",
-                "No saved directories to manage.",
-                QMessageBox.StandardButton.Ok,
-            )
-            return
+                    # Update current_root_dir to first selected for compatibility
+                    self.current_root_dir = self.selected_slate_dirs[0]
 
-        # Create dialog
-        dialog = QMessageBox(self)
-        dialog.setWindowTitle("Manage Directories")
-        dialog.setText("Saved Photo Directories:")
-        dialog.setInformativeText("\n".join(self.cached_root_dirs))
-        dialog.setIcon(QMessageBox.Icon.Information)
-        dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+                    # Update cached directories (add any new ones)
+                    for dir_path in self.selected_slate_dirs:
+                        if dir_path not in self.cached_root_dirs:
+                            self.cached_root_dirs.append(dir_path)
 
-        # Add custom "Remove Current" button if there's more than one directory
-        remove_btn = None
-        if len(self.cached_root_dirs) > 1:
-            remove_btn = dialog.addButton("Remove Current", QMessageBox.ButtonRole.ActionRole)
+                    # Update display
+                    self.update_selected_dirs_display()
 
-        _ = dialog.exec()
-
-        # Handle removal if button was clicked
-        if remove_btn and dialog.clickedButton() == remove_btn:
-            current_dir = str(self.cmb_root.currentText()).strip()
-            if current_dir in self.cached_root_dirs:
-                reply = QMessageBox.question(
-                    self,
-                    "Remove Directory",
-                    f"Remove this directory from the list?\n\n{current_dir}",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
-                )
-                if reply == QMessageBox.StandardButton.Yes:
-                    self.cached_root_dirs.remove(current_dir)
+                    # Save configuration
                     save_config(
                         self.current_root_dir,
                         self.cached_root_dirs,
-                        self.generate_thumbnails_pref,
+                        self.selected_slate_dirs,
+                        self.chk_generate_thumbnails.isChecked(),
                         self.thumbnail_size,
-                        self.lazy_loading_pref,
-                        self.exclude_patterns_pref,
+                        self.chk_lazy_loading.isChecked(),
+                        self.exclude_patterns_pref
                     )
-                    index = self.cmb_root.findText(current_dir)
-                    if index != -1:
-                        self.cmb_root.removeItem(index)
-                    logger.info(f"Removed directory from cache: {current_dir}")
-                    self.update_status(f"Removed directory: {current_dir}")
+
+                    logger.info(f"Selected {len(self.selected_slate_dirs)} directories: {self.selected_slate_dirs}")
+                    self.update_status(f"Selected {len(self.selected_slate_dirs)} director{'y' if len(self.selected_slate_dirs) == 1 else 'ies'}")
+
+        except Exception as e:
+            self.update_status(f"Error in directory selection: {e}")
+            logger.error(f"Error in directory selection: {e}", exc_info=True)
+
+    @log_function
+    def update_selected_dirs_display(self) -> None:
+        """Update the text display to show currently selected directories."""
+        if self.selected_slate_dirs:
+            # Show one path per line
+            display_text = "\n".join(self.selected_slate_dirs)
+            self.selected_dirs_display.setPlainText(display_text)
+        else:
+            # Clear display if nothing selected
+            self.selected_dirs_display.clear()
 
     def on_scan(self):
+        """Scan selected directories for photo collections."""
         try:
-            root_path = str(self.cmb_root.currentText()).strip()
-            if not root_path:
-                self.update_status("Please select a slate directory.")
-                logger.warning("Scan initiated without specifying a slate directory.")
-                return
-            if not os.path.isdir(root_path):
-                self.update_status("The specified slate directory does not exist.")
-                logger.error(f"The specified slate directory does not exist: {root_path}")
+            # Get list of checked folders
+            if not self.selected_slate_dirs:
+                self.update_status("Please check at least one directory to scan.")
+                logger.warning("Scan initiated without selecting any directories.")
+                _ = QMessageBox.information(
+                    self,
+                    "No Directories Selected",
+                    "Please check one or more directories from the list before scanning.",
+                    QMessageBox.StandardButton.Ok
+                )
                 return
 
-            self.current_root_dir = root_path
-            self.update_cached_dirs(root_path)  # Ensure it's cached
-            self.update_status("Scanning directories...")
-            logger.info(f"Scanning directories: {self.current_root_dir}")
-            self.progress_bar.setVisible(True)  # Show progress bar
+            # Validate that all selected directories exist
+            invalid_dirs = [d for d in self.selected_slate_dirs if not os.path.isdir(d)]
+            if invalid_dirs:
+                self.update_status(f"Some selected directories do not exist: {', '.join(invalid_dirs)}")
+                logger.error(f"Invalid directories selected: {invalid_dirs}")
+                return
+
+            # Update current_root_dir to first selected directory for compatibility
+            self.current_root_dir = self.selected_slate_dirs[0]
+
+            self.update_status(f"Scanning {len(self.selected_slate_dirs)} director{'y' if len(self.selected_slate_dirs) == 1 else 'ies'}...")
+            logger.info(f"Scanning {len(self.selected_slate_dirs)} directories: {self.selected_slate_dirs}")
+            self.progress_bar.setVisible(True)
             self.progress_bar.setValue(0)
             self.slates_dict = {}
             self.filtered_slates = {}
             self.unique_focal_lengths = set()
             self.list_slates.clear()
 
-            # Check if cache exists
-            cached_slates = self.cache_manager.load_cache(self.current_root_dir)
-            if cached_slates:
-                self.slates_dict = cached_slates
-                self.apply_filters()
-                self.update_status("Loaded slates from cache.")
-                self.progress_bar.setValue(100)
-                # Hide progress bar after 2 seconds
-                QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))
-                logger.info(f"Loaded slates from cache for directory: {self.current_root_dir}")
-            else:
-                # Start scan thread
-                self.scan_thread = ScanThread(root_path, self.cache_manager)  # pyright: ignore[reportArgumentType]
-                _ = self.scan_thread.scan_complete.connect(self.on_scan_complete)
-                _ = self.scan_thread.progress.connect(self.on_scan_progress)
-                self.scan_thread.start()
-                logger.debug("Scan thread started.")
+            # For single directory, check cache
+            if len(self.selected_slate_dirs) == 1:
+                cached_slates = self.cache_manager.load_cache(self.selected_slate_dirs[0])
+                if cached_slates:
+                    self.slates_dict = cached_slates
+                    self.apply_filters()
+                    self.update_status("Loaded slates from cache.")
+                    self.progress_bar.setValue(100)
+                    QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))
+                    logger.info(f"Loaded slates from cache for directory: {self.selected_slate_dirs[0]}")
+                    return
+
+            # Start scan thread with selected directories
+            self.scan_thread = ScanThread(self.selected_slate_dirs, self.cache_manager, self.exclude_patterns_pref)  # pyright: ignore[reportArgumentType]
+            _ = self.scan_thread.scan_complete.connect(self.on_scan_complete)
+            _ = self.scan_thread.progress.connect(self.on_scan_progress)
+            self.scan_thread.start()
+            logger.debug(f"Scan thread started for {len(self.selected_slate_dirs)} directories")
         except Exception as e:
             self.update_status(f"Error initiating scan: {e}")
             logger.error(f"Error initiating scan: {e}", exc_info=True)
@@ -917,7 +847,7 @@ class GalleryGeneratorApp(QMainWindow):
         # Save exclude pattern preference if it changed
         if exclude_pattern != self.exclude_patterns_pref:
             self.exclude_patterns_pref = exclude_pattern
-            save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
+            save_config(self.current_root_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
 
         # Start with all slates
         filtered = self.slates_dict.copy()
@@ -980,22 +910,25 @@ class GalleryGeneratorApp(QMainWindow):
             logger.error(f"Error deselecting all slates: {e}", exc_info=True)
 
     def on_refresh(self):
+        """Re-scan selected directories, clearing cache."""
         try:
-            root_path = str(self.cmb_root.currentText()).strip()
-            if not root_path:
-                self.update_status("Please select a slate directory.")
-                logger.warning("Refresh initiated without specifying a slate directory.")
+            if not self.selected_slate_dirs:
+                self.update_status("Please check at least one directory to refresh.")
+                logger.warning("Refresh initiated without selecting any directories.")
                 return
-            if not os.path.isdir(root_path):
-                self.update_status("The specified slate directory does not exist.")
-                logger.error(f"The specified slate directory does not exist: {root_path}")
+
+            # Validate directories exist
+            invalid_dirs = [d for d in self.selected_slate_dirs if not os.path.isdir(d)]
+            if invalid_dirs:
+                self.update_status(f"Some selected directories do not exist: {', '.join(invalid_dirs)}")
+                logger.error(f"Invalid directories selected: {invalid_dirs}")
                 return
 
             # Confirm before refreshing
             reply = QMessageBox.question(
                 self,
                 "Confirm Refresh",
-                "This will re-scan the directory and clear your current selections.\n\n" +
+                f"This will re-scan {len(self.selected_slate_dirs)} director{'y' if len(self.selected_slate_dirs) == 1 else 'ies'} and clear the cache.\n\n" +
                 "Are you sure you want to continue?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
@@ -1005,11 +938,10 @@ class GalleryGeneratorApp(QMainWindow):
                 logger.info("Refresh cancelled by user")
                 return
 
-            self.current_root_dir = root_path
-            self.update_cached_dirs(root_path)  # Ensure it's cached
-            self.update_status("Refreshing directories...")
-            logger.info(f"Refreshing directories: {self.current_root_dir}")
-            self.progress_bar.setVisible(True)  # Show progress bar
+            self.current_root_dir = self.selected_slate_dirs[0]  # Update to first selected
+            self.update_status(f"Refreshing {len(self.selected_slate_dirs)} director{'y' if len(self.selected_slate_dirs) == 1 else 'ies'}...")
+            logger.info(f"Refreshing directories: {self.selected_slate_dirs}")
+            self.progress_bar.setVisible(True)
             self.progress_bar.setValue(0)
             self.slates_dict = {}
             self.filtered_slates = {}
@@ -1017,11 +949,11 @@ class GalleryGeneratorApp(QMainWindow):
             self.list_slates.clear()
 
             # Start scan thread to re-scan and update cache
-            self.scan_thread = ScanThread(root_path, self.cache_manager)  # pyright: ignore[reportArgumentType]
+            self.scan_thread = ScanThread(self.selected_slate_dirs, self.cache_manager, self.exclude_patterns_pref)  # pyright: ignore[reportArgumentType]
             _ = self.scan_thread.scan_complete.connect(self.on_scan_complete)
             _ = self.scan_thread.progress.connect(self.on_scan_progress)
             self.scan_thread.start()
-            logger.debug("Refresh scan thread started.")
+            logger.debug(f"Refresh scan thread started for {len(self.selected_slate_dirs)} directories")
         except Exception as e:
             self.update_status(f"Error initiating refresh: {e}")
             logger.error(f"Error initiating refresh: {e}", exc_info=True)
@@ -1076,7 +1008,7 @@ class GalleryGeneratorApp(QMainWindow):
                 slates_dict=self.slates_dict,
                 cache_manager=self.cache_manager,  # pyright: ignore[reportArgumentType]
                 output_dir=output,
-                root_dir=self.current_root_dir,
+                allowed_root_dirs=self.selected_slate_dirs if self.selected_slate_dirs else [self.current_root_dir],
                 template_path=template_path,
                 generate_thumbnails=self.chk_generate_thumbnails.isChecked(),
                 thumbnail_size=self.thumbnail_size,
@@ -1134,7 +1066,7 @@ class GalleryGeneratorApp(QMainWindow):
         self.generate_thumbnails_pref = self.chk_generate_thumbnails.isChecked()
         # Enable/disable size dropdown based on checkbox state
         self.combo_thumbnail_size.setEnabled(self.generate_thumbnails_pref)
-        save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
+        save_config(self.current_root_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
 
     def on_thumbnail_size_changed(self, text):
         """Save thumbnail size preference when dropdown changes."""
@@ -1144,7 +1076,7 @@ class GalleryGeneratorApp(QMainWindow):
                 size_str = text.split('x')[0].strip()
                 try:
                     self.thumbnail_size = int(size_str)
-                    save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
+                    save_config(self.current_root_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
                     logger.info(f"Thumbnail size changed to: {self.thumbnail_size}")
                 except ValueError:
                     logger.error(f"Invalid thumbnail size format: {text}")
@@ -1154,7 +1086,7 @@ class GalleryGeneratorApp(QMainWindow):
     def on_lazy_loading_pref_changed(self):
         """Save lazy loading preference when checkbox state changes."""
         self.lazy_loading_pref = self.chk_lazy_loading.isChecked()
-        save_config(self.current_root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
+        save_config(self.current_root_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
         logger.info(f"Lazy loading preference changed to: {self.lazy_loading_pref}")
 
     @override
@@ -1177,8 +1109,7 @@ class GalleryGeneratorApp(QMainWindow):
             logger.info("Cache manager shutdown successfully.")
 
             # Save configuration
-            root_dir = str(self.cmb_root.currentText()).strip()
-            save_config(root_dir, self.cached_root_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
+            save_config(self.current_root_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
 
             event.accept()
             logger.info("Application closed.")

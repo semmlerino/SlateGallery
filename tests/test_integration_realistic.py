@@ -231,7 +231,7 @@ class TestRealWorldScenarios:
             date_data=[],
             template_path=str(template),
             output_dir=str(output_dir),
-            root_dir=str(images_dir),
+            allowed_root_dirs=str(images_dir),
             status_callback=lambda x: None,
             lazy_loading=True
         )
@@ -327,7 +327,7 @@ class TestRealWorldScenarios:
             date_data=[],
             template_path=str(template),
             output_dir=str(output_dir),
-            root_dir=str(images_dir),
+            allowed_root_dirs=str(images_dir),
             status_callback=lambda x: None,
             lazy_loading=False
         )
@@ -356,7 +356,7 @@ class TestRealWorldScenarios:
             date_data=[],
             template_path=str(template),
             output_dir=str(output_dir),
-            root_dir=str(images_dir),
+            allowed_root_dirs=str(images_dir),
             status_callback=lambda x: None,
             lazy_loading=False
         )
@@ -463,7 +463,7 @@ class TestPlatformCompatibility:
             date_data=[],
             template_path=str(template),
             output_dir=str(output_dir),
-            root_dir=str(images_dir),
+            allowed_root_dirs=str(images_dir),
             status_callback=lambda x: None,
             lazy_loading=True
         )

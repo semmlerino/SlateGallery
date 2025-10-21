@@ -114,7 +114,7 @@ class TestPerformanceBenchmark:
             slates_dict=slates_dict,
             cache_manager=cache_manager,
             output_dir=str(benchmark_environment['output_dir']),
-            root_dir=str(benchmark_environment['images_dir']),
+            allowed_root_dirs=str(benchmark_environment['images_dir']),
             template_path=str(benchmark_environment['template']),
             generate_thumbnails=False,  # Test without thumbnails
             thumbnail_size=600
@@ -171,7 +171,7 @@ class TestPerformanceBenchmark:
                 slates_dict=slates_dict,
                 cache_manager=cache_manager,
                 output_dir=str(benchmark_environment['output_dir']),
-                root_dir=str(benchmark_environment['images_dir']),
+                allowed_root_dirs=str(benchmark_environment['images_dir']),
                 template_path=str(benchmark_environment['template']),
                 generate_thumbnails=False,
                 thumbnail_size=600
@@ -245,7 +245,7 @@ class TestPerformanceBenchmark:
                 slates_dict=slates_dict,
                 cache_manager=cache_manager,
                 output_dir=str(benchmark_environment['output_dir']),
-                root_dir=str(benchmark_environment['images_dir']),
+                allowed_root_dirs=str(benchmark_environment['images_dir']),
                 template_path=str(benchmark_environment['template']),
                 generate_thumbnails=False,
                 thumbnail_size=600
@@ -345,7 +345,7 @@ class TestThumbnailPerformance:
                 slates_dict=slates_dict,
                 cache_manager=cache_manager,
                 output_dir=str(output_dir),
-                root_dir=str(images_dir),
+                allowed_root_dirs=str(images_dir),
                 template_path=str(template),
                 generate_thumbnails=True,  # Enable thumbnails
                 thumbnail_size=800

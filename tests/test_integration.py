@@ -158,7 +158,7 @@ class TestSlateGalleryIntegration:
             date_data=[],
             template_path=template_path,
             output_dir=output_dir,
-            root_dir=images_dir,
+            allowed_root_dirs=images_dir,
             status_callback=capture_status
         )
 
@@ -186,12 +186,12 @@ class TestSlateGalleryIntegration:
             # Patch the config file location
             m.setattr('src.core.config_manager.CONFIG_FILE', str(config_file))
 
-            # Test save config (now with 5 parameters)
+            # Test save config (now with 7 parameters)
             slate_dirs = [images_dir, str(base_path / 'other')]
-            save_config(images_dir, slate_dirs, False, 600, True)
+            save_config(images_dir, slate_dirs, slate_dirs, False, 600, True, "")
 
-            # Test load config (now returns 5 values)
-            current_dir, loaded_dirs, generate_thumbnails, thumbnail_size, lazy_loading = load_config()
+            # Test load config (now returns 7 values)
+            current_dir, loaded_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns = load_config()
 
             assert current_dir == images_dir
             assert loaded_dirs == slate_dirs
@@ -529,7 +529,7 @@ class TestDateFilteringIntegration:
             date_data=date_data,
             template_path=template_path,
             output_dir=output_dir,
-            root_dir=images_dir,
+            allowed_root_dirs=images_dir,
             status_callback=capture_status
         )
 
@@ -627,7 +627,7 @@ class TestDateFilteringIntegration:
             date_data=date_data,
             template_path=template_path,
             output_dir=output_dir,
-            root_dir=str(images_dir),
+            allowed_root_dirs=str(images_dir),
             status_callback=lambda x: None
         )
 
@@ -701,7 +701,7 @@ class TestDateFilteringIntegration:
             date_data=date_data,
             template_path=template_path,
             output_dir=output_dir,
-            root_dir=images_dir,
+            allowed_root_dirs=images_dir,
             status_callback=lambda x: None
         )
 

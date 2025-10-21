@@ -2,7 +2,7 @@
 
 import os
 from collections.abc import Callable
-from typing import Optional, TypedDict
+from typing import Optional, TypedDict, Union
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -64,22 +64,47 @@ def generate_html_gallery(
     date_data: list[DateData],
     template_path: str,
     output_dir: str,
-    root_dir: str,
+    allowed_root_dirs: Union[str, list[str]],
     status_callback: Callable[[str], None],
     lazy_loading: bool = True,
 ) -> bool:
+    """Generate HTML gallery from processed data.
+
+    Args:
+        gallery_data: List of slate data with images
+        focal_length_data: Focal length statistics
+        date_data: Date statistics
+        template_path: Path to Jinja2 template
+        output_dir: Directory to write output HTML
+        allowed_root_dirs: Single root directory or list of allowed root directories for security validation
+        status_callback: Callback function for status updates
+        lazy_loading: Whether to enable lazy loading of images
+
+    Returns:
+        True if successful, False otherwise
+    """
     try:
+        # Normalize allowed_root_dirs to a list for uniform handling
+        if isinstance(allowed_root_dirs, str):
+            real_allowed_roots = [os.path.realpath(allowed_root_dirs)]
+        else:
+            real_allowed_roots = [os.path.realpath(d) for d in allowed_root_dirs]
+
         # Process image paths
         for slate in gallery_data:
             for image in slate["images"]:
                 original_path = image["original_path"]
                 try:
-                    # Verify path is within root directory
+                    # Verify path is within one of the allowed root directories
                     real_original_path = os.path.realpath(original_path)
-                    real_root_dir = os.path.realpath(root_dir)
-                    if not real_original_path.startswith(real_root_dir):
-                        logger.error(f"Image path {original_path} is outside of root directory {root_dir}")
-                        status_callback(f"Skipping image outside of root directory: {original_path}")
+
+                    # Check if path starts with any of the allowed roots
+                    is_allowed = any(real_original_path.startswith(real_root) for real_root in real_allowed_roots)
+
+                    if not is_allowed:
+                        allowed_dirs_str = ", ".join(real_allowed_roots)
+                        logger.error(f"Image path {original_path} is outside of allowed directories: {allowed_dirs_str}")
+                        status_callback(f"Skipping image outside of allowed directories: {original_path}")
                         continue
 
                     # Use absolute path with forward slashes for web

@@ -36,6 +36,12 @@ ignore = ["E501"]  # Line too long (ruff format will handle)
 pythonVersion = "3.9"
 typeCheckingMode = "standard"
 ignore = ["venv", ".git"]
+allowedUntypedLibraries = ["PIL", "piexif"]
+# Note: PIL's EXIF data handling is largely untyped; these suppressions are pragmatic
+reportExplicitAny = "warning"
+reportAny = "warning"
+# PIL's _getexif() is a deprecated untyped method - suppress for pragmatic compatibility
+reportAttributeAccessIssue = "warning"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
