@@ -50,9 +50,9 @@ class ImprovedCacheManager:
         if os.path.exists(cache_file):
             try:
                 with open(cache_file) as f:
-                    slates = json.load(f)
+                    slates: dict[str, object] = json.load(f)
                 logger.info(f"Loaded slates from cache for directory: {root_dir}")
-                return slates  # type: ignore[return-value]
+                return slates
             except Exception as e:
                 logger.error(f"Error loading cache for {root_dir}: {e}", exc_info=True)
                 return None
@@ -72,8 +72,17 @@ class ImprovedCacheManager:
 
     @log_function
     def process_images_batch(
-        self, image_paths: Sequence[object], callback: Optional[Callable[[int], None]] = None
+        self, image_paths: Sequence[object], _callback: Optional[Callable[[int], None]] = None
     ) -> list[dict[str, object]]:
+        """Process a batch of image paths.
+
+        Args:
+            image_paths: Sequence of image paths to process
+            _callback: Optional progress callback (unused in current implementation)
+
+        Returns:
+            List of dictionaries containing image path information
+        """
         logger.info(f"Processing batch of {len(image_paths)} images for scanning.")
 
         return [{"path": str(path)} for path in image_paths]

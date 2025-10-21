@@ -26,7 +26,7 @@ DateData = dict[str, object]  # Structure: {"value": str, "count": int, "display
 class CacheManagerProtocol(Protocol):
     """Protocol defining the interface for cache managers."""
     def process_images_batch(
-        self, image_paths: Sequence[object], callback: Optional[Callable[[int], None]] = None
+        self, image_paths: Sequence[object], _callback: Optional[Callable[[int], None]] = None
     ) -> list[dict[str, object]]:
         ...
 
@@ -173,12 +173,8 @@ class ScanThread(QtCore.QThread):
 
             # Process EXIF data for all slates
             processed_slates: int = 0
-            total_slates: int = len(slates) if isinstance(slates, dict) else 0
+            total_slates: int = len(slates)
             logger.debug(f"Total slates to process: {total_slates}")
-
-            if not isinstance(slates, dict):
-                self.scan_complete.emit({}, "Invalid slates data.")
-                return
 
             for _slate, data in slates.items():
                 # Check if we should stop
@@ -187,12 +183,9 @@ class ScanThread(QtCore.QThread):
                     self.scan_complete.emit({}, "Scan cancelled.")
                     return
 
-                if not isinstance(data, dict):
-                    continue
-
                 image_paths = data.get("images", [])
                 processed_images = self.cache_manager.process_images_batch(
-                    image_paths, callback=lambda p: self.progress.emit(50 + int(p / 2))  # Second 50% is EXIF processing  # type: ignore[arg-type]
+                    image_paths, _callback=lambda p: self.progress.emit(50 + int(p / 2))  # Second 50% is EXIF processing  # type: ignore[arg-type]
                 )
                 data["images"] = processed_images  # pyright: ignore[reportArgumentType]
 
