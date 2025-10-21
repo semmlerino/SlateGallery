@@ -656,6 +656,14 @@ h1 {
 }
 
 /* Selected Mode Button - Blue color for distinction */
+#toggle-selected-mode {
+    background-color: #1976D2;
+}
+
+#toggle-selected-mode:hover {
+    background-color: #1565C0;
+}
+
 #toggle-selected-mode[aria-pressed="true"] {
     background-color: #2196F3;
 }
