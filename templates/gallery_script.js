@@ -817,13 +817,15 @@ document.addEventListener('DOMContentLoaded', function() {
             if (e.shiftKey && lastSelectedIndex !== -1 && currentIndex !== -1) {
                 e.preventDefault(); // Prevent default checkbox behavior
 
-                // Determine if we're selecting or deselecting based on the target state
-                const shouldCheck = !checkbox.checked;
+                // Determine if we're selecting or deselecting based on the FIRST checkbox state
+                // This ensures consistent behavior: if first checkbox is checked, select all in range
+                const firstCheckbox = visibleCheckboxes[lastSelectedIndex];
+                const shouldCheck = firstCheckbox ? firstCheckbox.checked : true;
 
                 // Select/deselect the range
                 selectRange(lastSelectedIndex, currentIndex, shouldCheck);
 
-                // Update last selected index
+                // Update last selected index to the current position
                 lastSelectedIndex = currentIndex;
             } else {
                 // Normal click - update last selected index
