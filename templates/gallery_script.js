@@ -441,6 +441,56 @@ document.addEventListener('DOMContentLoaded', function() {
         filterImages();
     }
 
+    // Hide all currently selected images
+    function hideSelectedImages() {
+        // Get all selected checkboxes from visible images only
+        const imageContainers = document.querySelectorAll('.image-container');
+        const selectedImages = [];
+
+        imageContainers.forEach(container => {
+            // Only consider visible images (not filtered out)
+            if (container.style.display !== 'none') {
+                const checkbox = container.querySelector('.select-checkbox');
+                if (checkbox && checkbox.checked) {
+                    const imagePath = container.getAttribute('data-full-image');
+                    if (imagePath) {
+                        selectedImages.push({
+                            path: imagePath,
+                            container: container,
+                            checkbox: checkbox
+                        });
+                    }
+                }
+            }
+        });
+
+        if (selectedImages.length === 0) {
+            showNotification('No images selected to hide', true);
+            return;
+        }
+
+        // Confirmation dialog for large selections (>10 images)
+        if (selectedImages.length > 10) {
+            if (!confirm(`Are you sure you want to hide ${selectedImages.length} images? This can be undone using "Unhide All" or by viewing hidden images.`)) {
+                return;
+            }
+        }
+
+        // Hide each selected image
+        selectedImages.forEach(item => {
+            hideImage(item.path);
+        });
+
+        // Show notification
+        showNotification(`Hidden ${selectedImages.length} image${selectedImages.length !== 1 ? 's' : ''}`);
+        announceToScreenReader(`Hidden ${selectedImages.length} image${selectedImages.length !== 1 ? 's' : ''} from gallery`);
+
+        // Update UI
+        updateCounts();
+        updateHiddenCountBadge();
+        filterImages();
+    }
+
     // Event listeners for hidden images controls
     document.getElementById('toggle-hidden-mode').addEventListener('click', toggleHiddenMode);
     document.getElementById('unhide-all-button').addEventListener('click', unhideAllImages);
@@ -495,6 +545,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Update export button badge
         updateExportButtonBadge(selectedCount);
+
+        // Update floating hide button visibility
+        updateFloatingHideButton(selectedCount);
     }
 
     // Update Export Button Badge based on selection count
@@ -510,6 +563,18 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             exportButtonContainer.classList.remove('has-selection');
             exportButton.removeAttribute('data-count');
+        }
+    }
+
+    // Update Floating Hide Button visibility based on selection count
+    function updateFloatingHideButton(count) {
+        const floatingHideButton = document.getElementById('floating-hide-button');
+        if (!floatingHideButton) return;
+
+        if (count > 0) {
+            floatingHideButton.style.display = 'block';
+        } else {
+            floatingHideButton.style.display = 'none';
         }
     }
 
@@ -560,6 +625,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
             img.style.display = (orientationMatch && focalMatch && dateMatch && hiddenMatch && selectedMatch) ? 'flex' : 'none';
         }
+
+        // Hide empty slates (slates with no visible images)
+        var slates = document.querySelectorAll('.slate');
+        slates.forEach(function(slate) {
+            var slateImages = slate.querySelectorAll('.image-container');
+            var hasVisibleImages = false;
+
+            // Check if this slate has any visible images
+            for (var i = 0; i < slateImages.length; i++) {
+                if (slateImages[i].style.display !== 'none') {
+                    hasVisibleImages = true;
+                    break;
+                }
+            }
+
+            // Hide the entire slate if no visible images
+            if (hasVisibleImages) {
+                slate.style.display = 'block';
+            } else {
+                slate.style.display = 'none';
+            }
+        });
 
         // Invalidate visible images cache after filtering (P1 Performance Fix)
         invalidateVisibleImagesCache();
@@ -621,6 +708,25 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.getElementById('select-all-photos').addEventListener('click', selectAllPhotos);
     document.getElementById('deselect-all-photos').addEventListener('click', deselectAllPhotos);
+    document.getElementById('hide-selected-photos').addEventListener('click', hideSelectedImages);
+
+    // Floating hide button event listener
+    const floatingHideButton = document.getElementById('floating-hide-selected');
+    if (floatingHideButton) {
+        floatingHideButton.addEventListener('click', hideSelectedImages);
+    }
+
+    // Keyboard shortcut for hide selected (Shift+H)
+    document.addEventListener('keydown', function(event) {
+        // Only trigger if Shift+H is pressed and not typing in an input field
+        if (event.shiftKey && event.key === 'H' && !event.target.matches('input, textarea')) {
+            event.preventDefault(); // Prevent default browser behavior
+            const selectedCount = document.querySelectorAll('.select-checkbox:checked').length;
+            if (selectedCount > 0) {
+                hideSelectedImages();
+            }
+        }
+    });
 
     var orientationCheckboxes = document.querySelectorAll('.orientation-filter');
     orientationCheckboxes.forEach(function(checkbox) {

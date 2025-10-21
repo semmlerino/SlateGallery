@@ -40,6 +40,13 @@
         <button type="button" id="export-to-clipboard" aria-label="Export to Clipboard">Export to Clipboard</button>
     </div>
 
+    <!-- Floating Hide Selected Button (only visible when images are selected) -->
+    <div class="floating-hide-button" id="floating-hide-button" style="display: none;">
+        <button type="button" id="floating-hide-selected" aria-label="Hide selected images (Shift+H)">
+            <span aria-hidden="true">👁️‍🗨️</span> Hide Selected
+        </button>
+    </div>
+
     <h1>Slate Photography Gallery</h1>
 
     <div class="filters">
@@ -80,6 +87,7 @@
         <!-- Updated button text and aria-label -->
         <button type="button" id="select-all-photos" aria-label="Select all visible Photos">Select all visible Photos</button>
         <button type="button" id="deselect-all-photos" aria-label="Deselect All Photos">Deselect All Photos</button>
+        <button type="button" id="hide-selected-photos" aria-label="Hide all selected images from gallery">Hide Selected</button>
     </div>
 
     <!-- Status Bar: Shows visible/total images and selection count -->

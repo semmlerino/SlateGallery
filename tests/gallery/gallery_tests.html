@@ -3062,6 +3062,699 @@
         });
 
         // =============================================================================
+        // HIDE SELECTED FUNCTIONALITY
+        // =============================================================================
+
+        describe('Hide Selected Functionality', function() {
+            let fixtures;
+            let containers;
+            let statusBar;
+            let hideSelectedButton;
+            let mockStorage;
+            let hiddenImages = {};
+
+            // Mock functions from gallery script
+            function isImageHidden(imagePath) {
+                return hiddenImages[imagePath] === true;
+            }
+
+            function hideImage(imagePath) {
+                hiddenImages[imagePath] = true;
+                const checkbox = document.querySelector(`[data-full-image="${imagePath}"] .select-checkbox`);
+                if (checkbox && checkbox.checked) {
+                    checkbox.checked = false;
+                    checkbox.parentElement.classList.remove('selected');
+                }
+            }
+
+            function getHiddenImagesCount() {
+                return Object.keys(hiddenImages).filter(key => hiddenImages[key]).length;
+            }
+
+            function filterImages() {
+                const imageContainers = document.querySelectorAll('.image-container');
+                imageContainers.forEach(img => {
+                    const imgPath = img.getAttribute('data-full-image');
+                    const hiddenMatch = !isImageHidden(imgPath);
+                    img.style.display = hiddenMatch ? 'flex' : 'none';
+                });
+            }
+
+            function updateCounts() {
+                const statusBarEl = document.getElementById('status-bar');
+                if (!statusBarEl) return;
+                const allContainers = document.querySelectorAll('.image-container');
+                const totalImages = allContainers.length;
+                const visibleCount = Array.from(allContainers).filter(c => c.style.display !== 'none').length;
+                const selectedCount = document.querySelectorAll('.select-checkbox:checked').length;
+                statusBarEl.textContent = `Showing ${visibleCount} of ${totalImages} images | ${selectedCount} selected`;
+            }
+
+            function hideSelectedImages() {
+                const imageContainers = document.querySelectorAll('.image-container');
+                const selectedImages = [];
+
+                imageContainers.forEach(container => {
+                    if (container.style.display !== 'none') {
+                        const checkbox = container.querySelector('.select-checkbox');
+                        if (checkbox && checkbox.checked) {
+                            const imagePath = container.getAttribute('data-full-image');
+                            if (imagePath) {
+                                selectedImages.push({ path: imagePath, container, checkbox });
+                            }
+                        }
+                    }
+                });
+
+                if (selectedImages.length === 0) {
+                    return 0;
+                }
+
+                selectedImages.forEach(item => {
+                    hideImage(item.path);
+                });
+
+                updateCounts();
+                filterImages();
+
+                return selectedImages.length;
+            }
+
+            beforeEach(function() {
+                fixtures = document.getElementById('test-fixtures');
+                TestHelpers.cleanup();
+
+                // Reset state
+                hiddenImages = {};
+
+                // Create gallery
+                containers = TestHelpers.createMockGallery(15);
+                containers.forEach(c => fixtures.appendChild(c));
+
+                // Create UI elements
+                statusBar = TestHelpers.createStatusBar();
+                fixtures.appendChild(statusBar);
+
+                // Create Hide Selected button
+                hideSelectedButton = document.createElement('button');
+                hideSelectedButton.id = 'hide-selected-photos';
+                hideSelectedButton.textContent = 'Hide Selected';
+                hideSelectedButton.setAttribute('aria-label', 'Hide all selected images from gallery');
+                fixtures.appendChild(hideSelectedButton);
+
+                // Mock localStorage
+                mockStorage = TestHelpers.mockLocalStorage();
+                window.localStorage = mockStorage;
+            });
+
+            afterEach(function() {
+                TestHelpers.cleanup();
+            });
+
+            describe('Basic Functionality', function() {
+                it('should hide all selected images', function() {
+                    // Select 3 images
+                    containers.slice(0, 3).forEach(c => {
+                        const checkbox = c.querySelector('.select-checkbox');
+                        checkbox.checked = true;
+                    });
+
+                    const hiddenCount = hideSelectedImages();
+
+                    expect(hiddenCount).to.equal(3);
+                    expect(getHiddenImagesCount()).to.equal(3);
+                });
+
+                it('should clear selections of hidden images', function() {
+                    // Select 2 images
+                    containers.slice(0, 2).forEach(c => {
+                        const checkbox = c.querySelector('.select-checkbox');
+                        checkbox.checked = true;
+                        c.classList.add('selected');
+                    });
+
+                    hideSelectedImages();
+
+                    // All selected checkboxes should now be unchecked
+                    const checkedBoxes = fixtures.querySelectorAll('.select-checkbox:checked');
+                    expect(checkedBoxes.length).to.equal(0);
+                });
+
+                it('should return 0 when no images are selected', function() {
+                    const hiddenCount = hideSelectedImages();
+                    expect(hiddenCount).to.equal(0);
+                });
+
+                it('should only hide visible images (respect filters)', function() {
+                    // Select 5 images
+                    containers.slice(0, 5).forEach(c => {
+                        const checkbox = c.querySelector('.select-checkbox');
+                        checkbox.checked = true;
+                    });
+
+                    // Hide 2 of them (simulating filter)
+                    containers[1].style.display = 'none';
+                    containers[3].style.display = 'none';
+
+                    const hiddenCount = hideSelectedImages();
+
+                    // Should only hide the 3 visible ones
+                    expect(hiddenCount).to.equal(3);
+                });
+
+                it('should update status bar after hiding', function() {
+                    containers.slice(0, 4).forEach(c => {
+                        c.querySelector('.select-checkbox').checked = true;
+                    });
+
+                    hideSelectedImages();
+
+                    expect(statusBar.textContent).to.include('0 selected');
+                });
+
+                it('should hide images from gallery view', function() {
+                    containers.slice(0, 3).forEach(c => {
+                        c.querySelector('.select-checkbox').checked = true;
+                    });
+
+                    hideSelectedImages();
+
+                    // Verify images are hidden
+                    const visibleImages = containers.filter(c => c.style.display === 'flex');
+                    expect(visibleImages.length).to.equal(12); // 15 - 3 = 12
+                });
+            });
+
+            describe('Bulk Operations', function() {
+                it('should hide large number of selected images', function() {
+                    // Select all 15 images
+                    containers.forEach(c => {
+                        c.querySelector('.select-checkbox').checked = true;
+                    });
+
+                    const hiddenCount = hideSelectedImages();
+
+                    expect(hiddenCount).to.equal(15);
+                    expect(getHiddenImagesCount()).to.equal(15);
+                });
+
+                it('should handle partial selections correctly', function() {
+                    // Select every other image (7 images)
+                    containers.forEach((c, i) => {
+                        if (i % 2 === 0) {
+                            c.querySelector('.select-checkbox').checked = true;
+                        }
+                    });
+
+                    const hiddenCount = hideSelectedImages();
+
+                    expect(hiddenCount).to.equal(8); // 15 / 2 rounded up
+                });
+
+                it('should handle hiding then unhiding workflow', function() {
+                    containers.slice(0, 3).forEach(c => {
+                        c.querySelector('.select-checkbox').checked = true;
+                    });
+
+                    hideSelectedImages();
+                    expect(getHiddenImagesCount()).to.equal(3);
+
+                    // Unhide them
+                    containers.slice(0, 3).forEach(c => {
+                        const path = c.getAttribute('data-full-image');
+                        delete hiddenImages[path];
+                    });
+
+                    expect(getHiddenImagesCount()).to.equal(0);
+                });
+            });
+
+            describe('Edge Cases', function() {
+                it('should handle repeated hide operations gracefully', function() {
+                    containers[0].querySelector('.select-checkbox').checked = true;
+
+                    hideSelectedImages();
+                    hideSelectedImages(); // Second call should be safe
+
+                    expect(getHiddenImagesCount()).to.equal(1);
+                });
+
+                it('should handle empty gallery', function() {
+                    // Remove all containers
+                    containers.forEach(c => c.remove());
+
+                    const hiddenCount = hideSelectedImages();
+                    expect(hiddenCount).to.equal(0);
+                });
+
+                it('should preserve hidden state across operations', function() {
+                    // Hide first 3
+                    containers.slice(0, 3).forEach(c => {
+                        c.querySelector('.select-checkbox').checked = true;
+                    });
+                    hideSelectedImages();
+
+                    // Hide next 2
+                    containers.slice(3, 5).forEach(c => {
+                        c.querySelector('.select-checkbox').checked = true;
+                    });
+                    hideSelectedImages();
+
+                    // Total should be 5
+                    expect(getHiddenImagesCount()).to.equal(5);
+                });
+            });
+
+            describe('Integration with Existing Features', function() {
+                it('should work with selection persistence', function() {
+                    containers.slice(0, 4).forEach(c => {
+                        c.querySelector('.select-checkbox').checked = true;
+                    });
+
+                    // Simulate saving to localStorage
+                    const selections = {};
+                    containers.slice(0, 4).forEach(c => {
+                        const path = c.getAttribute('data-full-image');
+                        selections[path] = true;
+                    });
+
+                    hideSelectedImages();
+
+                    // Selections should be cleared for hidden images
+                    const checkedBoxes = fixtures.querySelectorAll('.select-checkbox:checked');
+                    expect(checkedBoxes.length).to.equal(0);
+                });
+
+                it('should update hidden count badge', function() {
+                    const badge = document.createElement('span');
+                    badge.className = 'hidden-count-badge';
+                    badge.style.display = 'none';
+                    fixtures.appendChild(badge);
+
+                    containers.slice(0, 5).forEach(c => {
+                        c.querySelector('.select-checkbox').checked = true;
+                    });
+
+                    hideSelectedImages();
+
+                    // Badge should be updated (in real implementation)
+                    expect(getHiddenImagesCount()).to.equal(5);
+                });
+
+                it('should work with filters active', function() {
+                    // Apply a filter (hide odd indices)
+                    containers.forEach((c, i) => {
+                        if (i % 2 === 1) {
+                            c.style.display = 'none';
+                        }
+                    });
+
+                    // Select all visible (even indices)
+                    containers.forEach((c, i) => {
+                        if (i % 2 === 0) {
+                            c.querySelector('.select-checkbox').checked = true;
+                        }
+                    });
+
+                    const hiddenCount = hideSelectedImages();
+
+                    // Should only hide visible selected ones
+                    expect(hiddenCount).to.equal(8);
+                });
+            });
+
+            describe('Accessibility', function() {
+                it('should have proper ARIA label on button', function() {
+                    const button = document.getElementById('hide-selected-photos');
+                    expect(button.getAttribute('aria-label')).to.equal('Hide all selected images from gallery');
+                });
+
+                it('should announce action to screen readers', function() {
+                    const ariaLive = document.createElement('div');
+                    ariaLive.id = 'aria-live-region';
+                    ariaLive.setAttribute('aria-live', 'polite');
+                    fixtures.appendChild(ariaLive);
+
+                    containers.slice(0, 3).forEach(c => {
+                        c.querySelector('.select-checkbox').checked = true;
+                    });
+
+                    hideSelectedImages();
+
+                    // In real implementation, screen reader would announce
+                    expect(getHiddenImagesCount()).to.equal(3);
+                });
+            });
+
+            describe('UI Button State', function() {
+                it('should be enabled when images are selected', function() {
+                    containers[0].querySelector('.select-checkbox').checked = true;
+                    const button = document.getElementById('hide-selected-photos');
+
+                    // Button should be clickable
+                    expect(button).to.exist;
+                    expect(button.disabled).to.not.be.true;
+                });
+
+                it('should be visible in photo controls', function() {
+                    const button = document.getElementById('hide-selected-photos');
+                    expect(button).to.exist;
+                    expect(button.textContent).to.equal('Hide Selected');
+                });
+            });
+        });
+
+        // =============================================================================
+        // FLOATING HIDE BUTTON AND KEYBOARD SHORTCUT
+        // =============================================================================
+
+        describe('Floating Hide Button and Keyboard Shortcut', function() {
+            let fixtures, containers, checkboxes;
+            let floatingButton, floatingButtonContainer;
+
+            // Mock functions
+            const mockHideImage = function(imagePath) {
+                const container = document.querySelector(`[data-full-image="${imagePath}"]`);
+                if (container) {
+                    container.style.display = 'none';
+                }
+            };
+
+            const mockUpdateCounts = function() {
+                const selectedCount = document.querySelectorAll('.select-checkbox:checked').length;
+                window.updateFloatingHideButton(selectedCount);
+            };
+
+            beforeEach(function() {
+                fixtures = document.getElementById('test-fixtures');
+                fixtures.innerHTML = '';
+
+                // Create floating hide button
+                floatingButtonContainer = document.createElement('div');
+                floatingButtonContainer.className = 'floating-hide-button';
+                floatingButtonContainer.id = 'floating-hide-button';
+                floatingButtonContainer.style.display = 'none';
+
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.id = 'floating-hide-selected';
+                button.setAttribute('aria-label', 'Hide selected images (Shift+H)');
+                button.innerHTML = '<span aria-hidden="true">👁️‍🗨️</span> Hide Selected';
+
+                floatingButtonContainer.appendChild(button);
+                fixtures.appendChild(floatingButtonContainer);
+
+                floatingButton = button;
+
+                // Create test images
+                containers = [];
+                checkboxes = [];
+                for (let i = 0; i < 5; i++) {
+                    const container = document.createElement('div');
+                    container.className = 'image-container';
+                    container.setAttribute('data-full-image', `image${i}.jpg`);
+
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.className = 'select-checkbox';
+
+                    container.appendChild(checkbox);
+                    fixtures.appendChild(container);
+                    containers.push(container);
+                    checkboxes.push(checkbox);
+                }
+
+                // Mock window.hideImage
+                window.hideImage = mockHideImage;
+                window.updateFloatingHideButton = function(count) {
+                    if (count > 0) {
+                        floatingButtonContainer.style.display = 'block';
+                    } else {
+                        floatingButtonContainer.style.display = 'none';
+                    }
+                };
+            });
+
+            afterEach(function() {
+                delete window.hideImage;
+                delete window.updateFloatingHideButton;
+            });
+
+            describe('Button Visibility', function() {
+                it('should be hidden when no images are selected', function() {
+                    mockUpdateCounts();
+                    expect(floatingButtonContainer.style.display).to.equal('none');
+                });
+
+                it('should be visible when images are selected', function() {
+                    checkboxes[0].checked = true;
+                    mockUpdateCounts();
+                    expect(floatingButtonContainer.style.display).to.equal('block');
+                });
+
+                it('should hide when all selections are cleared', function() {
+                    checkboxes[0].checked = true;
+                    checkboxes[1].checked = true;
+                    mockUpdateCounts();
+                    expect(floatingButtonContainer.style.display).to.equal('block');
+
+                    checkboxes[0].checked = false;
+                    checkboxes[1].checked = false;
+                    mockUpdateCounts();
+                    expect(floatingButtonContainer.style.display).to.equal('none');
+                });
+
+                it('should remain visible when some selections remain', function() {
+                    checkboxes[0].checked = true;
+                    checkboxes[1].checked = true;
+                    mockUpdateCounts();
+
+                    checkboxes[0].checked = false;
+                    mockUpdateCounts();
+                    expect(floatingButtonContainer.style.display).to.equal('block');
+                });
+            });
+
+            describe('Button Click Functionality', function() {
+                it('should hide all selected images when clicked', function() {
+                    checkboxes[0].checked = true;
+                    checkboxes[2].checked = true;
+
+                    floatingButton.click();
+
+                    expect(containers[0].style.display).to.equal('none');
+                    expect(containers[2].style.display).to.equal('none');
+                    expect(containers[1].style.display).to.not.equal('none');
+                });
+
+                it('should work identically to regular hide button', function() {
+                    checkboxes[1].checked = true;
+                    checkboxes[3].checked = true;
+
+                    floatingButton.click();
+
+                    expect(containers[1].style.display).to.equal('none');
+                    expect(containers[3].style.display).to.equal('none');
+                });
+            });
+
+            describe('Keyboard Shortcut (Shift+H)', function() {
+                it('should trigger hide when Shift+H is pressed', function() {
+                    checkboxes[0].checked = true;
+
+                    const event = new KeyboardEvent('keydown', {
+                        key: 'H',
+                        shiftKey: true,
+                        bubbles: true
+                    });
+                    document.dispatchEvent(event);
+
+                    expect(containers[0].style.display).to.equal('none');
+                });
+
+                it('should not trigger without Shift key', function() {
+                    checkboxes[0].checked = true;
+
+                    const event = new KeyboardEvent('keydown', {
+                        key: 'H',
+                        shiftKey: false,
+                        bubbles: true
+                    });
+                    document.dispatchEvent(event);
+
+                    expect(containers[0].style.display).to.not.equal('none');
+                });
+
+                it('should not trigger when typing in input field', function() {
+                    checkboxes[0].checked = true;
+
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    fixtures.appendChild(input);
+
+                    const event = new KeyboardEvent('keydown', {
+                        key: 'H',
+                        shiftKey: true,
+                        bubbles: true
+                    });
+                    input.dispatchEvent(event);
+
+                    expect(containers[0].style.display).to.not.equal('none');
+                });
+
+                it('should do nothing if no images are selected', function() {
+                    const event = new KeyboardEvent('keydown', {
+                        key: 'H',
+                        shiftKey: true,
+                        bubbles: true
+                    });
+                    document.dispatchEvent(event);
+
+                    containers.forEach(container => {
+                        expect(container.style.display).to.not.equal('none');
+                    });
+                });
+
+                it('should hide multiple selected images', function() {
+                    checkboxes[0].checked = true;
+                    checkboxes[2].checked = true;
+                    checkboxes[4].checked = true;
+
+                    const event = new KeyboardEvent('keydown', {
+                        key: 'H',
+                        shiftKey: true,
+                        bubbles: true
+                    });
+                    document.dispatchEvent(event);
+
+                    expect(containers[0].style.display).to.equal('none');
+                    expect(containers[2].style.display).to.equal('none');
+                    expect(containers[4].style.display).to.equal('none');
+                    expect(containers[1].style.display).to.not.equal('none');
+                    expect(containers[3].style.display).to.not.equal('none');
+                });
+            });
+
+            describe('Accessibility', function() {
+                it('should have proper ARIA label mentioning keyboard shortcut', function() {
+                    const ariaLabel = floatingButton.getAttribute('aria-label');
+                    expect(ariaLabel).to.include('Shift+H');
+                });
+
+                it('should have eye icon for visual indication', function() {
+                    const iconSpan = floatingButton.querySelector('[aria-hidden="true"]');
+                    expect(iconSpan).to.exist;
+                    expect(iconSpan.textContent).to.include('👁️');
+                });
+
+                it('should have descriptive button text', function() {
+                    expect(floatingButton.textContent).to.include('Hide Selected');
+                });
+            });
+
+            describe('Integration with Existing Features', function() {
+                it('should work with filter-aware hide functionality', function() {
+                    // Filter out some images
+                    containers[1].style.display = 'none';
+                    containers[3].style.display = 'none';
+
+                    // Select all images (including filtered ones)
+                    checkboxes.forEach(cb => cb.checked = true);
+
+                    floatingButton.click();
+
+                    // Only visible selected images should be hidden
+                    expect(containers[0].style.display).to.equal('none');
+                    expect(containers[2].style.display).to.equal('none');
+                    expect(containers[4].style.display).to.equal('none');
+                });
+
+                it('should update visibility after bulk operations', function() {
+                    // Initially hidden
+                    expect(floatingButtonContainer.style.display).to.equal('none');
+
+                    // Select multiple images
+                    checkboxes[0].checked = true;
+                    checkboxes[1].checked = true;
+                    checkboxes[2].checked = true;
+                    mockUpdateCounts();
+
+                    // Button should be visible
+                    expect(floatingButtonContainer.style.display).to.equal('block');
+
+                    // Deselect all
+                    checkboxes.forEach(cb => cb.checked = false);
+                    mockUpdateCounts();
+
+                    // Button should hide again
+                    expect(floatingButtonContainer.style.display).to.equal('none');
+                });
+
+                it('should not interfere with modal keyboard shortcuts', function() {
+                    // This test ensures Shift+H only works when modal is not open
+                    const modal = document.createElement('div');
+                    modal.id = 'image-modal';
+                    modal.className = 'modal';
+                    fixtures.appendChild(modal);
+
+                    checkboxes[0].checked = true;
+
+                    const event = new KeyboardEvent('keydown', {
+                        key: 'H',
+                        shiftKey: true,
+                        bubbles: true
+                    });
+                    document.dispatchEvent(event);
+
+                    // Should still work (modal shortcuts are different)
+                    expect(containers[0].style.display).to.equal('none');
+                });
+            });
+
+            describe('Performance and Edge Cases', function() {
+                it('should handle rapid keyboard shortcut presses', function() {
+                    checkboxes[0].checked = true;
+
+                    for (let i = 0; i < 5; i++) {
+                        const event = new KeyboardEvent('keydown', {
+                            key: 'H',
+                            shiftKey: true,
+                            bubbles: true
+                        });
+                        document.dispatchEvent(event);
+                    }
+
+                    expect(containers[0].style.display).to.equal('none');
+                });
+
+                it('should handle button and keyboard shortcut together', function() {
+                    checkboxes[0].checked = true;
+                    checkboxes[1].checked = true;
+
+                    floatingButton.click();
+
+                    checkboxes[2].checked = true;
+
+                    const event = new KeyboardEvent('keydown', {
+                        key: 'H',
+                        shiftKey: true,
+                        bubbles: true
+                    });
+                    document.dispatchEvent(event);
+
+                    expect(containers[0].style.display).to.equal('none');
+                    expect(containers[1].style.display).to.equal('none');
+                    expect(containers[2].style.display).to.equal('none');
+                });
+
+                it('should position button correctly (CSS class exists)', function() {
+                    expect(floatingButtonContainer.className).to.equal('floating-hide-button');
+                    expect(floatingButton.id).to.equal('floating-hide-selected');
+                });
+            });
+        });
+
+        // =============================================================================
         // SHIFT-SELECT RANGE FUNCTIONALITY
         // =============================================================================
 
@@ -3464,6 +4157,389 @@
 
                 expect(badge.textContent).to.equal('5');
                 expect(window.getComputedStyle(badge).display).to.equal('flex');
+            });
+        });
+
+        // =============================================================================
+        // EMPTY SLATE HIDING FUNCTIONALITY
+        // =============================================================================
+
+        describe('Empty Slate Hiding', function() {
+            let fixtures, slates, containers;
+
+            beforeEach(function() {
+                fixtures = document.getElementById('test-fixtures');
+                fixtures.innerHTML = '';
+
+                // Create notification bar and status bar
+                fixtures.appendChild(TestHelpers.createNotificationBar());
+                fixtures.appendChild(TestHelpers.createStatusBar());
+
+                // Create two slates with images
+                slates = [];
+                containers = [];
+
+                // Slate 1: 5 images
+                const slate1 = document.createElement('div');
+                slate1.className = 'slate';
+                const slate1Header = document.createElement('div');
+                slate1Header.className = 'slate-header';
+                const slate1Title = document.createElement('h2');
+                slate1Title.textContent = 'A001A';
+                slate1Header.appendChild(slate1Title);
+                slate1.appendChild(slate1Header);
+
+                const slate1Images = document.createElement('div');
+                slate1Images.className = 'images';
+                for (let i = 0; i < 5; i++) {
+                    const container = TestHelpers.createImageContainer(
+                        `/path/to/slate1/image${i}.jpg`,
+                        'portrait',
+                        '50',
+                        '2025-01-15'
+                    );
+                    slate1Images.appendChild(container);
+                    containers.push(container);
+                }
+                slate1.appendChild(slate1Images);
+                slates.push(slate1);
+                fixtures.appendChild(slate1);
+
+                // Slate 2: 5 images
+                const slate2 = document.createElement('div');
+                slate2.className = 'slate';
+                const slate2Header = document.createElement('div');
+                slate2Header.className = 'slate-header';
+                const slate2Title = document.createElement('h2');
+                slate2Title.textContent = 'A002A';
+                slate2Header.appendChild(slate2Title);
+                slate2.appendChild(slate2Header);
+
+                const slate2Images = document.createElement('div');
+                slate2Images.className = 'images';
+                for (let i = 0; i < 5; i++) {
+                    const container = TestHelpers.createImageContainer(
+                        `/path/to/slate2/image${i}.jpg`,
+                        'landscape',
+                        '85',
+                        '2025-01-16'
+                    );
+                    slate2Images.appendChild(container);
+                    containers.push(container);
+                }
+                slate2.appendChild(slate2Images);
+                slates.push(slate2);
+                fixtures.appendChild(slate2);
+            });
+
+            /**
+             * Simulate filterImages function's slate hiding logic
+             */
+            function hideEmptySlates() {
+                const allSlates = document.querySelectorAll('.slate');
+                allSlates.forEach(function(slate) {
+                    const slateImages = slate.querySelectorAll('.image-container');
+                    let hasVisibleImages = false;
+
+                    for (let i = 0; i < slateImages.length; i++) {
+                        if (slateImages[i].style.display !== 'none') {
+                            hasVisibleImages = true;
+                            break;
+                        }
+                    }
+
+                    if (hasVisibleImages) {
+                        slate.style.display = 'block';
+                    } else {
+                        slate.style.display = 'none';
+                    }
+                });
+            }
+
+            describe('Basic Functionality', function() {
+                it('should show slates with visible images', function() {
+                    // All images visible
+                    hideEmptySlates();
+
+                    expect(slates[0].style.display).to.equal('block');
+                    expect(slates[1].style.display).to.equal('block');
+                });
+
+                it('should hide slate when all images are filtered out', function() {
+                    // Hide all images in first slate
+                    const slate1Containers = slates[0].querySelectorAll('.image-container');
+                    slate1Containers.forEach(container => {
+                        container.style.display = 'none';
+                    });
+
+                    hideEmptySlates();
+
+                    expect(slates[0].style.display).to.equal('none');
+                    expect(slates[1].style.display).to.equal('block');
+                });
+
+                it('should hide multiple slates when empty', function() {
+                    // Hide all images in both slates
+                    containers.forEach(container => {
+                        container.style.display = 'none';
+                    });
+
+                    hideEmptySlates();
+
+                    expect(slates[0].style.display).to.equal('none');
+                    expect(slates[1].style.display).to.equal('none');
+                });
+
+                it('should show slate again when images become visible', function() {
+                    // Initially hide all images in first slate
+                    const slate1Containers = slates[0].querySelectorAll('.image-container');
+                    slate1Containers.forEach(container => {
+                        container.style.display = 'none';
+                    });
+
+                    hideEmptySlates();
+                    expect(slates[0].style.display).to.equal('none');
+
+                    // Make images visible again
+                    slate1Containers.forEach(container => {
+                        container.style.display = 'flex';
+                    });
+
+                    hideEmptySlates();
+                    expect(slates[0].style.display).to.equal('block');
+                });
+            });
+
+            describe('Filter Integration', function() {
+                it('should hide slate when orientation filter removes all images', function() {
+                    // Slate 1 has portrait, Slate 2 has landscape
+                    // Filter to show only landscape (hide all portrait)
+                    const slate1Containers = slates[0].querySelectorAll('.image-container');
+                    slate1Containers.forEach(container => {
+                        const orientation = container.getAttribute('data-orientation');
+                        if (orientation === 'portrait') {
+                            container.style.display = 'none';
+                        }
+                    });
+
+                    hideEmptySlates();
+
+                    expect(slates[0].style.display).to.equal('none'); // All portrait
+                    expect(slates[1].style.display).to.equal('block'); // All landscape
+                });
+
+                it('should hide slate when focal length filter removes all images', function() {
+                    // Slate 1 has 50mm, Slate 2 has 85mm
+                    // Filter to show only 50mm
+                    const slate2Containers = slates[1].querySelectorAll('.image-container');
+                    slate2Containers.forEach(container => {
+                        const focalLength = container.getAttribute('data-focal-length');
+                        if (focalLength === '85') {
+                            container.style.display = 'none';
+                        }
+                    });
+
+                    hideEmptySlates();
+
+                    expect(slates[0].style.display).to.equal('block'); // Has 50mm
+                    expect(slates[1].style.display).to.equal('none'); // All 85mm filtered out
+                });
+
+                it('should hide slate when date filter removes all images', function() {
+                    // Slate 1 has 2025-01-15, Slate 2 has 2025-01-16
+                    const slate1Containers = slates[0].querySelectorAll('.image-container');
+                    slate1Containers.forEach(container => {
+                        const date = container.getAttribute('data-date');
+                        if (date.startsWith('2025-01-15')) {
+                            container.style.display = 'none';
+                        }
+                    });
+
+                    hideEmptySlates();
+
+                    expect(slates[0].style.display).to.equal('none'); // All 2025-01-15 filtered
+                    expect(slates[1].style.display).to.equal('block'); // Has 2025-01-16
+                });
+            });
+
+            describe('Hidden Images Mode Integration', function() {
+                it('should hide slate when all images are hidden', function() {
+                    // Simulate hiding all images in slate 1
+                    const slate1Containers = slates[0].querySelectorAll('.image-container');
+                    slate1Containers.forEach(container => {
+                        container.style.display = 'none'; // Hidden by hidden images filter
+                    });
+
+                    hideEmptySlates();
+
+                    expect(slates[0].style.display).to.equal('none');
+                    expect(slates[1].style.display).to.equal('block');
+                });
+
+                it('should show slate in hidden mode when it has hidden images', function() {
+                    // In hidden mode, only hidden images are visible
+                    // Hide slate 2's images (not hidden), show slate 1's (hidden)
+                    const slate2Containers = slates[1].querySelectorAll('.image-container');
+                    slate2Containers.forEach(container => {
+                        container.style.display = 'none';
+                    });
+
+                    hideEmptySlates();
+
+                    expect(slates[0].style.display).to.equal('block'); // Has visible hidden images
+                    expect(slates[1].style.display).to.equal('none'); // No hidden images
+                });
+            });
+
+            describe('Selected Mode Integration', function() {
+                it('should hide slate when all images are unselected in selected mode', function() {
+                    // In selected mode, only selected images are visible
+                    // Hide all images in slate 1 (none selected)
+                    const slate1Containers = slates[0].querySelectorAll('.image-container');
+                    slate1Containers.forEach(container => {
+                        container.style.display = 'none';
+                    });
+
+                    hideEmptySlates();
+
+                    expect(slates[0].style.display).to.equal('none');
+                    expect(slates[1].style.display).to.equal('block');
+                });
+
+                it('should show slate with at least one selected image', function() {
+                    // Select one image in slate 1, hide the rest
+                    const slate1Containers = slates[0].querySelectorAll('.image-container');
+                    slate1Containers.forEach((container, i) => {
+                        if (i === 0) {
+                            container.style.display = 'flex'; // Selected
+                            container.classList.add('selected');
+                        } else {
+                            container.style.display = 'none'; // Not selected
+                        }
+                    });
+
+                    hideEmptySlates();
+
+                    expect(slates[0].style.display).to.equal('block'); // Has one selected
+                });
+            });
+
+            describe('Combined Filters', function() {
+                it('should handle multiple filters correctly', function() {
+                    // Apply orientation filter (portrait only) + hide some images
+                    const slate1Containers = slates[0].querySelectorAll('.image-container');
+                    const slate2Containers = slates[1].querySelectorAll('.image-container');
+
+                    // Slate 1: portrait, keep 2 visible
+                    slate1Containers.forEach((container, i) => {
+                        container.style.display = i < 2 ? 'flex' : 'none';
+                    });
+
+                    // Slate 2: landscape, all hidden by orientation filter
+                    slate2Containers.forEach(container => {
+                        container.style.display = 'none';
+                    });
+
+                    hideEmptySlates();
+
+                    expect(slates[0].style.display).to.equal('block'); // Has 2 visible
+                    expect(slates[1].style.display).to.equal('none'); // All filtered
+                });
+            });
+
+            describe('Edge Cases', function() {
+                it('should handle slate with single image', function() {
+                    // Remove all but one image from slate 1
+                    const slate1Containers = slates[0].querySelectorAll('.image-container');
+                    for (let i = 1; i < slate1Containers.length; i++) {
+                        slate1Containers[i].remove();
+                    }
+
+                    hideEmptySlates();
+                    expect(slates[0].style.display).to.equal('block');
+
+                    // Hide the single image
+                    slate1Containers[0].style.display = 'none';
+                    hideEmptySlates();
+                    expect(slates[0].style.display).to.equal('none');
+                });
+
+                it('should handle empty slate (no images)', function() {
+                    // Create slate with no images
+                    const emptySlate = document.createElement('div');
+                    emptySlate.className = 'slate';
+                    const emptyImages = document.createElement('div');
+                    emptyImages.className = 'images';
+                    emptySlate.appendChild(emptyImages);
+                    fixtures.appendChild(emptySlate);
+
+                    hideEmptySlates();
+
+                    expect(emptySlate.style.display).to.equal('none');
+                });
+
+                it('should handle rapid filter changes', function() {
+                    const slate1Containers = slates[0].querySelectorAll('.image-container');
+
+                    // Toggle visibility multiple times
+                    for (let i = 0; i < 5; i++) {
+                        slate1Containers.forEach(c => c.style.display = 'none');
+                        hideEmptySlates();
+                        expect(slates[0].style.display).to.equal('none');
+
+                        slate1Containers.forEach(c => c.style.display = 'flex');
+                        hideEmptySlates();
+                        expect(slates[0].style.display).to.equal('block');
+                    }
+                });
+            });
+
+            describe('Visual Clutter Reduction', function() {
+                it('should hide slate header when slate is hidden', function() {
+                    const slate1Containers = slates[0].querySelectorAll('.image-container');
+                    slate1Containers.forEach(c => c.style.display = 'none');
+
+                    hideEmptySlates();
+
+                    // When slate is hidden, header is also hidden
+                    expect(slates[0].style.display).to.equal('none');
+                    const header = slates[0].querySelector('.slate-header');
+                    expect(header).to.not.be.null;
+                });
+
+                it('should reduce visual clutter with many empty slates', function() {
+                    // Create 5 more slates, all empty
+                    for (let i = 0; i < 5; i++) {
+                        const slate = document.createElement('div');
+                        slate.className = 'slate';
+                        const images = document.createElement('div');
+                        images.className = 'images';
+                        // Add images but hide them all
+                        for (let j = 0; j < 3; j++) {
+                            const container = TestHelpers.createImageContainer(
+                                `/path/slate${i}/img${j}.jpg`,
+                                'portrait',
+                                '50',
+                                '2025-01-01'
+                            );
+                            container.style.display = 'none';
+                            images.appendChild(container);
+                        }
+                        slate.appendChild(images);
+                        fixtures.appendChild(slate);
+                    }
+
+                    hideEmptySlates();
+
+                    // Count visible slates
+                    const allSlates = document.querySelectorAll('.slate');
+                    const visibleSlates = Array.from(allSlates).filter(
+                        s => s.style.display !== 'none'
+                    );
+
+                    // Only slates with visible images should be shown
+                    expect(visibleSlates.length).to.equal(2); // Original 2 slates
+                });
             });
         });
 

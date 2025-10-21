@@ -227,6 +227,37 @@ h1 {
     z-index: 1;
 }
 
+/* Floating Hide Selected Button - Positioned above export button */
+.floating-hide-button {
+    position: fixed;
+    bottom: 100px;
+    right: 30px;
+    z-index: 950;
+}
+.floating-hide-button button {
+    padding: 15px 30px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    background-color: #D32F2F;
+    color: #ffffff;
+    border: none;
+    border-radius: 50px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3), 0 2px 4px rgba(0,0,0,0.2);
+    transition: all 0.2s ease;
+    min-width: 160px;
+}
+.floating-hide-button button:hover {
+    background-color: #C62828;
+    box-shadow: 0 6px 12px rgba(0,0,0,0.4), 0 3px 6px rgba(0,0,0,0.3);
+    transform: translateY(-2px);
+}
+.floating-hide-button button:active {
+    background-color: #B71C1C;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+    transform: translateY(0) scale(0.98);
+}
+
 .slate {
     margin-bottom: 30px;
 }

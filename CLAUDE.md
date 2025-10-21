@@ -35,11 +35,23 @@ SlateGallery is a PyQt6-based photo gallery generator that:
 - **Modal Button**: Hide/unhide button in modal view (red for hide, green for unhide)
 - **Keyboard Shortcut**: Press 'H' key in modal to hide/unhide current image
 - **Hidden Mode**: Toggle to view ONLY hidden images for management
+- **Bulk Hide**: Hide multiple selected images at once with floating button and confirmation
 - **Unhide All**: Bulk restore with confirmation dialog
 - **Persistence**: Uses localStorage with in-memory cache for O(1) performance
 - **Accessibility**: Full ARIA support with screen reader announcements
 - **Integration**: Works seamlessly with filters, selections, and export
 - **Documentation**: See `HIDDEN_IMAGES_FEATURE.md` and `HIDDEN_IMAGES_TESTING.md`
+
+### Shift-Select Range Functionality (NEW - 2025-10-21)
+- **Feature**: Select multiple images efficiently by holding Shift and clicking checkboxes
+- **Behavior**: Selects all images between first click (anchor) and Shift+click
+- **Anchor Point**: Fixed anchor point prevents unexpected range changes
+- **Integration**: Works seamlessly with bulk hide, export, and filtering
+
+### Show Selected Images Toggle (NEW - 2025-10-21)
+- **Feature**: Filter gallery to show only selected images
+- **UI**: Always-blue button for easy distinction from other controls
+- **Use Case**: Focus on specific image selections during review workflow
 
 ## Code Quality Tools
 
@@ -86,15 +98,16 @@ basedpyright src/      # Type checking
   - `test_threading_errors.py` - Threading error scenarios (to be implemented, see THREADING_ERROR_TESTS_GUIDE.md)
 
 ### JavaScript Test Suite Overview (NEW!)
-- **75 total tests** covering gallery template frontend functionality
+- **99 total tests** covering gallery template frontend functionality
 - **Test framework**: Mocha + Chai + Sinon (HTML-based, CDN delivery)
-- **Current coverage**: Modal (100%), Events (100%), Persistence (95%)
+- **Current coverage**: Modal (100%), Events (100%), Persistence (95%), Empty Slate Hiding (100%)
 - **Zero installation required**: Open `tests/gallery/gallery_tests.html` in browser
 - **Key features tested**:
   - Modal functionality (open, navigate, close with keyboard)
   - Event delegation (performance optimization)
   - Selection persistence (localStorage save/restore)
   - Export button (clipboard API, focal length data)
+  - Empty slate hiding (reduces visual clutter when slates are empty)
   - Performance at scale (500 images validated)
 - **Documentation**:
   - `tests/gallery/INDEX.md` - Navigation hub ⭐ Start here
@@ -139,7 +152,7 @@ cd tests/gallery
 ./run_tests.sh headless   # CI/CD headless mode
 ```
 
-**Expected Output**: `75 passing (1.2s)` - All frontend tests pass
+**Expected Output**: `99 passing (1.3s)` - All frontend tests pass
 
 ### Qt Testing in Headless Environments
 
@@ -306,4 +319,4 @@ For GitHub Actions or similar:
 10. **Worker optimization**: Worker count is now 2x CPU cores for I/O operations (up to 16 workers)
 11. **Type safety**: Project uses basedpyright in "recommended" mode with 0 errors, 251 warnings (production-ready)
 
-Last updated: 2025-10-17
+Last updated: 2025-10-21
