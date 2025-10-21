@@ -80,7 +80,10 @@ document.addEventListener('DOMContentLoaded', function() {
     let saveTimeout = null;
     function debouncedSave() {
         clearTimeout(saveTimeout);
-        saveTimeout = setTimeout(saveSelections, 300);
+        saveTimeout = setTimeout(() => {
+            saveSelections();
+            updateSelectedCountBadge();
+        }, 300);
     }
 
     // Generic debounce utility for performance optimization
@@ -100,6 +103,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Global state - in-memory cache initialized on page load
     let hiddenImages = {}; // Format: {"/path/to/image.jpg": true}
     let isHiddenMode = false; // Toggle between normal gallery and hidden images view
+    let isSelectedMode = false; // Toggle between normal gallery and selected images view
 
     // ARIA live region for screen reader announcements
     function announceToScreenReader(message) {
@@ -143,6 +147,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Get count of hidden images
     function getHiddenImagesCount() {
         return Object.keys(hiddenImages).filter(key => hiddenImages[key]).length;
+    }
+
+    // Get count of selected images
+    function getSelectedImagesCount() {
+        return document.querySelectorAll('.select-checkbox:checked').length;
     }
 
     // Hide image from gallery
@@ -268,6 +277,20 @@ document.addEventListener('DOMContentLoaded', function() {
     function toggleHiddenMode() {
         isHiddenMode = !isHiddenMode;
 
+        // If entering hidden mode, exit selected mode
+        if (isHiddenMode && isSelectedMode) {
+            isSelectedMode = false;
+            const selectedToggleButton = document.getElementById('toggle-selected-mode');
+            const selectedStatusBar = document.getElementById('status-bar');
+            const showSelectedText = selectedToggleButton.querySelector('.show-selected-text');
+            const showAllText = selectedToggleButton.querySelector('.show-all-text');
+
+            selectedToggleButton.setAttribute('aria-pressed', 'false');
+            showSelectedText.style.display = 'inline';
+            showAllText.style.display = 'none';
+            selectedStatusBar.classList.remove('selected-mode');
+        }
+
         const toggleButton = document.getElementById('toggle-hidden-mode');
         const unhideAllButton = document.getElementById('unhide-all-button');
         const statusBar = document.getElementById('status-bar');
@@ -305,6 +328,60 @@ document.addEventListener('DOMContentLoaded', function() {
         updateCounts();
     }
 
+    // Toggle between normal gallery and selected images view
+    function toggleSelectedMode() {
+        isSelectedMode = !isSelectedMode;
+
+        // If entering selected mode, exit hidden mode
+        if (isSelectedMode && isHiddenMode) {
+            isHiddenMode = false;
+            const hiddenToggleButton = document.getElementById('toggle-hidden-mode');
+            const unhideAllButton = document.getElementById('unhide-all-button');
+            const hiddenStatusBar = document.getElementById('status-bar');
+            const showHiddenText = hiddenToggleButton.querySelector('.show-hidden-text');
+            const showGalleryText = hiddenToggleButton.querySelector('.show-gallery-text');
+
+            hiddenToggleButton.setAttribute('aria-pressed', 'false');
+            showHiddenText.style.display = 'inline';
+            showGalleryText.style.display = 'none';
+            unhideAllButton.style.display = 'none';
+            hiddenStatusBar.classList.remove('hidden-mode');
+
+            // Update modal hide button if modal is open
+            updateModalHideButton();
+        }
+
+        const toggleButton = document.getElementById('toggle-selected-mode');
+        const statusBar = document.getElementById('status-bar');
+        const showSelectedText = toggleButton.querySelector('.show-selected-text');
+        const showAllText = toggleButton.querySelector('.show-all-text');
+
+        if (isSelectedMode) {
+            // Entering selected mode
+            toggleButton.setAttribute('aria-pressed', 'true');
+            showSelectedText.style.display = 'none';
+            showAllText.style.display = 'inline';
+            statusBar.classList.add('selected-mode');
+
+            const selectedCount = getSelectedImagesCount();
+            showNotification(`Showing ${selectedCount} selected images`);
+            announceToScreenReader(`Selected images mode activated. Showing ${selectedCount} selected images.`);
+        } else {
+            // Exiting selected mode
+            toggleButton.setAttribute('aria-pressed', 'false');
+            showSelectedText.style.display = 'inline';
+            showAllText.style.display = 'none';
+            statusBar.classList.remove('selected-mode');
+
+            showNotification('Returned to gallery view');
+            announceToScreenReader('Gallery view restored');
+        }
+
+        // Refresh gallery view
+        filterImages();
+        updateCounts();
+    }
+
     // Update hidden count badge
     function updateHiddenCountBadge() {
         const badge = document.querySelector('.hidden-count-badge');
@@ -315,6 +392,21 @@ document.addEventListener('DOMContentLoaded', function() {
             badge.style.display = 'flex';
             badge.textContent = count;
             badge.setAttribute('aria-label', `${count} hidden images`);
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    // Update selected count badge
+    function updateSelectedCountBadge() {
+        const badge = document.querySelector('.selected-count-badge');
+        if (!badge) return;
+
+        const count = getSelectedImagesCount();
+        if (count > 0) {
+            badge.style.display = 'flex';
+            badge.textContent = count;
+            badge.setAttribute('aria-label', `${count} selected images`);
         } else {
             badge.style.display = 'none';
         }
@@ -351,6 +443,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Event listeners for hidden images controls
     document.getElementById('toggle-hidden-mode').addEventListener('click', toggleHiddenMode);
     document.getElementById('unhide-all-button').addEventListener('click', unhideAllImages);
+
+    // Event listener for selected images control
+    document.getElementById('toggle-selected-mode').addEventListener('click', toggleSelectedMode);
     document.getElementById('modal-hide-button').addEventListener('click', function() {
         if (isHiddenMode) {
             unhideCurrentImage();
@@ -455,7 +550,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 hiddenMatch = !isImageHidden(imgPath);
             }
 
-            img.style.display = (orientationMatch && focalMatch && dateMatch && hiddenMatch) ? 'flex' : 'none';
+            // Selected state filtering
+            var selectedMatch = true;
+            if (isSelectedMode) {
+                // In selected mode: ONLY show selected images
+                selectedMatch = img.classList.contains('selected');
+            }
+
+            img.style.display = (orientationMatch && focalMatch && dateMatch && hiddenMatch && selectedMatch) ? 'flex' : 'none';
         }
 
         // Invalidate visible images cache after filtering (P1 Performance Fix)
@@ -959,6 +1061,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Images use lazy loading for better performance
         // Restore saved selections from previous session
         restoreSelections();
+        // Update selected count badge
+        updateSelectedCountBadge();
         // Initialize status bar counts
         updateCounts();
     }
