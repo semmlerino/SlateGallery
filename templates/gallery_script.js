@@ -104,6 +104,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let hiddenImages = {}; // Format: {"/path/to/image.jpg": true}
     let isHiddenMode = false; // Toggle between normal gallery and hidden images view
     let isSelectedMode = false; // Toggle between normal gallery and selected images view
+    let lastSelectedIndex = -1; // Track last selected checkbox for shift-select range
 
     // ARIA live region for screen reader announcements
     function announceToScreenReader(message) {
@@ -756,9 +757,83 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // ===== SHIFT-SELECT RANGE FUNCTIONALITY =====
+    /**
+     * Select or deselect a range of checkboxes from startIndex to endIndex
+     * @param {number} startIndex - Starting index in the visible checkboxes array
+     * @param {number} endIndex - Ending index in the visible checkboxes array
+     * @param {boolean} checked - Whether to check or uncheck the range
+     */
+    function selectRange(startIndex, endIndex, checked) {
+        // Get all visible checkboxes (non-hidden images)
+        const allCheckboxes = Array.from(document.querySelectorAll('.select-checkbox'));
+        const visibleCheckboxes = allCheckboxes.filter(cb => {
+            return cb.parentElement.style.display !== 'none';
+        });
+
+        // Ensure indices are in correct order
+        const start = Math.min(startIndex, endIndex);
+        const end = Math.max(startIndex, endIndex);
+
+        // Select/deselect all checkboxes in range
+        for (let i = start; i <= end; i++) {
+            if (i >= 0 && i < visibleCheckboxes.length) {
+                const checkbox = visibleCheckboxes[i];
+                checkbox.checked = checked;
+                if (checked) {
+                    checkbox.parentElement.classList.add('selected');
+                } else {
+                    checkbox.parentElement.classList.remove('selected');
+                }
+            }
+        }
+
+        // Save and update counts
+        debouncedSave();
+        updateCounts();
+
+        // Show notification about range selection
+        const count = Math.abs(end - start) + 1;
+        const action = checked ? 'Selected' : 'Deselected';
+        showNotification(`${action} ${count} images`);
+    }
+
     // ===== EVENT DELEGATION FOR CHECKBOXES (P0 Performance Fix) =====
     // Instead of 500+ individual listeners, use single delegated listener on document
     // Memory: ~50KB saved, initialization: ~95ms faster on 500 images
+    // Enhanced with shift-select support for range selection
+    document.addEventListener('click', function(e) {
+        if (e.target.matches('.select-checkbox')) {
+            const checkbox = e.target;
+
+            // Get all visible checkboxes
+            const allCheckboxes = Array.from(document.querySelectorAll('.select-checkbox'));
+            const visibleCheckboxes = allCheckboxes.filter(cb => {
+                return cb.parentElement.style.display !== 'none';
+            });
+            const currentIndex = visibleCheckboxes.indexOf(checkbox);
+
+            // Handle shift-click for range selection
+            if (e.shiftKey && lastSelectedIndex !== -1 && currentIndex !== -1) {
+                e.preventDefault(); // Prevent default checkbox behavior
+
+                // Determine if we're selecting or deselecting based on the target state
+                const shouldCheck = !checkbox.checked;
+
+                // Select/deselect the range
+                selectRange(lastSelectedIndex, currentIndex, shouldCheck);
+
+                // Update last selected index
+                lastSelectedIndex = currentIndex;
+            } else {
+                // Normal click - update last selected index
+                if (currentIndex !== -1) {
+                    lastSelectedIndex = currentIndex;
+                }
+            }
+        }
+    });
+
     document.addEventListener('change', function(e) {
         if (e.target.matches('.select-checkbox')) {
             const checkbox = e.target;
@@ -783,13 +858,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // ===== EVENT DELEGATION FOR IMAGE CLICKS (P0 Performance Fix) =====
     // Instead of 500+ individual listeners, use single delegated listener on document
     // Memory: ~50KB saved, initialization: ~95ms faster on 500 images
+    // Enhanced with shift-select support for range selection
     document.addEventListener('click', function(e) {
         if (e.target.matches('.image-container img')) {
             const img = e.target;
             const checkbox = img.parentElement.querySelector('.select-checkbox');
             if (checkbox) {
-                checkbox.checked = !checkbox.checked;
-                checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                // Create a click event with shift key state preserved
+                const clickEvent = new MouseEvent('click', {
+                    bubbles: true,
+                    cancelable: true,
+                    shiftKey: e.shiftKey
+                });
+                checkbox.dispatchEvent(clickEvent);
             }
         }
     });
