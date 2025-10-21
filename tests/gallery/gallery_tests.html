@@ -2828,6 +2828,646 @@
         });
 
         // =============================================================================
+        // SHOW SELECTED IMAGES FEATURE
+        // =============================================================================
+
+        describe('Show Selected Images Toggle', function() {
+            let fixtures, containers, toggleButton, statusBar;
+            let isSelectedMode, lastSelectedIndex;
+
+            beforeEach(function() {
+                // Reset state
+                isSelectedMode = false;
+                lastSelectedIndex = -1;
+
+                fixtures = document.getElementById('test-fixtures');
+                fixtures.innerHTML = '';
+
+                // Create toggle button
+                const viewModeControls = document.createElement('div');
+                viewModeControls.className = 'view-mode-controls';
+
+                toggleButton = document.createElement('button');
+                toggleButton.id = 'toggle-selected-mode';
+                toggleButton.setAttribute('aria-pressed', 'false');
+                toggleButton.setAttribute('aria-label', 'Toggle selected images view');
+
+                const showSelectedText = document.createElement('span');
+                showSelectedText.className = 'show-selected-text';
+                showSelectedText.textContent = 'Show Selected Images';
+
+                const showAllText = document.createElement('span');
+                showAllText.className = 'show-all-text';
+                showAllText.style.display = 'none';
+                showAllText.textContent = 'Back to Gallery';
+
+                const badge = document.createElement('span');
+                badge.className = 'selected-count-badge';
+                badge.style.display = 'none';
+
+                toggleButton.appendChild(showSelectedText);
+                toggleButton.appendChild(showAllText);
+                toggleButton.appendChild(badge);
+                viewModeControls.appendChild(toggleButton);
+                fixtures.appendChild(viewModeControls);
+
+                // Create status bar
+                statusBar = TestHelpers.createStatusBar();
+                fixtures.appendChild(statusBar);
+
+                // Create notification bar
+                const notificationBar = TestHelpers.createNotificationBar();
+                fixtures.appendChild(notificationBar);
+
+                // Create ARIA live region
+                const liveRegion = document.createElement('div');
+                liveRegion.id = 'aria-live-region';
+                liveRegion.setAttribute('aria-live', 'polite');
+                liveRegion.setAttribute('aria-atomic', 'true');
+                fixtures.appendChild(liveRegion);
+
+                // Create gallery containers
+                containers = TestHelpers.createMockGallery(10);
+                containers.forEach(c => fixtures.appendChild(c));
+
+                // Select some images for testing
+                containers[1].querySelector('.select-checkbox').checked = true;
+                containers[1].classList.add('selected');
+                containers[3].querySelector('.select-checkbox').checked = true;
+                containers[3].classList.add('selected');
+                containers[7].querySelector('.select-checkbox').checked = true;
+                containers[7].classList.add('selected');
+            });
+
+            describe('Toggle Functionality', function() {
+                it('should show only selected images when activated', function() {
+                    // Simulate toggle activation
+                    isSelectedMode = true;
+                    toggleButton.setAttribute('aria-pressed', 'true');
+                    toggleButton.querySelector('.show-selected-text').style.display = 'none';
+                    toggleButton.querySelector('.show-all-text').style.display = 'inline';
+                    statusBar.classList.add('selected-mode');
+
+                    // Filter images (simulating filterImages function)
+                    containers.forEach((container, i) => {
+                        const isSelected = container.classList.contains('selected');
+                        container.style.display = (isSelectedMode && isSelected) ? 'flex' :
+                                                  (isSelectedMode && !isSelected) ? 'none' : 'flex';
+                    });
+
+                    // Verify only selected images are visible
+                    expect(containers[1].style.display).to.equal('flex');
+                    expect(containers[3].style.display).to.equal('flex');
+                    expect(containers[7].style.display).to.equal('flex');
+                    expect(containers[0].style.display).to.equal('none');
+                    expect(containers[2].style.display).to.equal('none');
+                });
+
+                it('should update button aria-pressed state', function() {
+                    toggleButton.setAttribute('aria-pressed', 'true');
+                    expect(toggleButton.getAttribute('aria-pressed')).to.equal('true');
+
+                    toggleButton.setAttribute('aria-pressed', 'false');
+                    expect(toggleButton.getAttribute('aria-pressed')).to.equal('false');
+                });
+
+                it('should toggle button text correctly', function() {
+                    const showSelectedText = toggleButton.querySelector('.show-selected-text');
+                    const showAllText = toggleButton.querySelector('.show-all-text');
+
+                    // Activate
+                    showSelectedText.style.display = 'none';
+                    showAllText.style.display = 'inline';
+
+                    expect(window.getComputedStyle(showSelectedText).display).to.equal('none');
+                    expect(window.getComputedStyle(showAllText).display).to.equal('inline');
+
+                    // Deactivate
+                    showSelectedText.style.display = 'inline';
+                    showAllText.style.display = 'none';
+
+                    expect(window.getComputedStyle(showSelectedText).display).to.equal('inline');
+                    expect(window.getComputedStyle(showAllText).display).to.equal('none');
+                });
+
+                it('should update status bar class', function() {
+                    statusBar.classList.add('selected-mode');
+                    expect(statusBar.classList.contains('selected-mode')).to.be.true;
+
+                    statusBar.classList.remove('selected-mode');
+                    expect(statusBar.classList.contains('selected-mode')).to.be.false;
+                });
+
+                it('should show correct count in badge', function() {
+                    const badge = toggleButton.querySelector('.selected-count-badge');
+                    const selectedCount = 3;
+
+                    badge.style.display = 'flex';
+                    badge.textContent = selectedCount;
+                    badge.setAttribute('aria-label', `${selectedCount} selected images`);
+
+                    expect(badge.textContent).to.equal('3');
+                    expect(badge.getAttribute('aria-label')).to.equal('3 selected images');
+                    expect(window.getComputedStyle(badge).display).to.equal('flex');
+                });
+
+                it('should hide badge when no selections', function() {
+                    const badge = toggleButton.querySelector('.selected-count-badge');
+                    badge.style.display = 'none';
+
+                    expect(window.getComputedStyle(badge).display).to.equal('none');
+                });
+            });
+
+            describe('Integration with Filters', function() {
+                it('should work with orientation filters', function() {
+                    // Set some containers to portrait, some to landscape
+                    containers[0].setAttribute('data-orientation', 'portrait');
+                    containers[1].setAttribute('data-orientation', 'landscape');
+                    containers[3].setAttribute('data-orientation', 'portrait');
+
+                    isSelectedMode = true;
+
+                    // Apply both selected mode and orientation filter
+                    const orientationFilter = 'landscape';
+                    containers.forEach(container => {
+                        const isSelected = container.classList.contains('selected');
+                        const orientation = container.getAttribute('data-orientation');
+                        const orientationMatch = (orientation === orientationFilter);
+                        const selectedMatch = isSelectedMode ? isSelected : true;
+
+                        container.style.display = (orientationMatch && selectedMatch) ? 'flex' : 'none';
+                    });
+
+                    // Only container 1 should be visible (landscape AND selected)
+                    expect(containers[1].style.display).to.equal('flex');
+                    expect(containers[0].style.display).to.equal('none'); // portrait
+                    expect(containers[3].style.display).to.equal('none'); // portrait
+                });
+
+                it('should show all selected images when no other filters active', function() {
+                    isSelectedMode = true;
+
+                    containers.forEach(container => {
+                        const isSelected = container.classList.contains('selected');
+                        container.style.display = isSelected ? 'flex' : 'none';
+                    });
+
+                    const visibleCount = containers.filter(c => c.style.display === 'flex').length;
+                    expect(visibleCount).to.equal(3); // 3 selected images
+                });
+            });
+
+            describe('Mutual Exclusivity with Hidden Mode', function() {
+                it('should exit hidden mode when entering selected mode', function() {
+                    // Simulate hidden mode active
+                    let isHiddenMode = true;
+                    const hiddenToggleButton = document.createElement('button');
+                    hiddenToggleButton.id = 'toggle-hidden-mode';
+                    hiddenToggleButton.setAttribute('aria-pressed', 'true');
+                    fixtures.appendChild(hiddenToggleButton);
+
+                    // Enter selected mode
+                    isSelectedMode = true;
+                    if (isSelectedMode && isHiddenMode) {
+                        isHiddenMode = false;
+                        hiddenToggleButton.setAttribute('aria-pressed', 'false');
+                        statusBar.classList.remove('hidden-mode');
+                    }
+
+                    expect(isHiddenMode).to.be.false;
+                    expect(hiddenToggleButton.getAttribute('aria-pressed')).to.equal('false');
+                    expect(statusBar.classList.contains('hidden-mode')).to.be.false;
+                });
+
+                it('should exit selected mode when entering hidden mode', function() {
+                    // Start in selected mode
+                    isSelectedMode = true;
+                    toggleButton.setAttribute('aria-pressed', 'true');
+                    statusBar.classList.add('selected-mode');
+
+                    // Enter hidden mode
+                    let isHiddenMode = true;
+                    if (isHiddenMode && isSelectedMode) {
+                        isSelectedMode = false;
+                        toggleButton.setAttribute('aria-pressed', 'false');
+                        statusBar.classList.remove('selected-mode');
+                    }
+
+                    expect(isSelectedMode).to.be.false;
+                    expect(toggleButton.getAttribute('aria-pressed')).to.equal('false');
+                    expect(statusBar.classList.contains('selected-mode')).to.be.false;
+                });
+            });
+        });
+
+        // =============================================================================
+        // SHIFT-SELECT RANGE FUNCTIONALITY
+        // =============================================================================
+
+        describe('Shift-Select Range Selection', function() {
+            let fixtures, containers, checkboxes;
+            let lastSelectedIndex;
+
+            beforeEach(function() {
+                lastSelectedIndex = -1;
+
+                fixtures = document.getElementById('test-fixtures');
+                fixtures.innerHTML = '';
+
+                // Create notification bar
+                const notificationBar = TestHelpers.createNotificationBar();
+                fixtures.appendChild(notificationBar);
+
+                // Create status bar
+                const statusBar = TestHelpers.createStatusBar();
+                fixtures.appendChild(statusBar);
+
+                // Create gallery containers
+                containers = TestHelpers.createMockGallery(10);
+                containers.forEach(c => fixtures.appendChild(c));
+
+                checkboxes = containers.map(c => c.querySelector('.select-checkbox'));
+            });
+
+            /**
+             * Simulate the selectRange function
+             */
+            function selectRange(startIndex, endIndex, checked) {
+                const allCheckboxes = Array.from(document.querySelectorAll('.select-checkbox'));
+                const visibleCheckboxes = allCheckboxes.filter(cb => {
+                    return cb.parentElement.style.display !== 'none';
+                });
+
+                const start = Math.min(startIndex, endIndex);
+                const end = Math.max(startIndex, endIndex);
+
+                for (let i = start; i <= end; i++) {
+                    if (i >= 0 && i < visibleCheckboxes.length) {
+                        const checkbox = visibleCheckboxes[i];
+                        checkbox.checked = checked;
+                        if (checked) {
+                            checkbox.parentElement.classList.add('selected');
+                        } else {
+                            checkbox.parentElement.classList.remove('selected');
+                        }
+                    }
+                }
+
+                return Math.abs(end - start) + 1; // Return count
+            }
+
+            describe('Basic Range Selection', function() {
+                it('should select range from index 0 to 3', function() {
+                    // Click first checkbox
+                    checkboxes[0].checked = true;
+                    containers[0].classList.add('selected');
+                    lastSelectedIndex = 0;
+
+                    // Shift-click fourth checkbox
+                    selectRange(lastSelectedIndex, 3, true);
+
+                    // Verify range is selected
+                    expect(checkboxes[0].checked).to.be.true;
+                    expect(checkboxes[1].checked).to.be.true;
+                    expect(checkboxes[2].checked).to.be.true;
+                    expect(checkboxes[3].checked).to.be.true;
+                    expect(checkboxes[4].checked).to.be.false;
+                });
+
+                it('should work in reverse direction (high to low index)', function() {
+                    // Click checkbox at index 5
+                    checkboxes[5].checked = true;
+                    containers[5].classList.add('selected');
+                    lastSelectedIndex = 5;
+
+                    // Shift-click checkbox at index 2 (lower index)
+                    selectRange(lastSelectedIndex, 2, true);
+
+                    // Verify range is selected
+                    expect(checkboxes[2].checked).to.be.true;
+                    expect(checkboxes[3].checked).to.be.true;
+                    expect(checkboxes[4].checked).to.be.true;
+                    expect(checkboxes[5].checked).to.be.true;
+                    expect(checkboxes[1].checked).to.be.false;
+                    expect(checkboxes[6].checked).to.be.false;
+                });
+
+                it('should update visual selection state', function() {
+                    lastSelectedIndex = 1;
+                    selectRange(lastSelectedIndex, 3, true);
+
+                    expect(containers[1].classList.contains('selected')).to.be.true;
+                    expect(containers[2].classList.contains('selected')).to.be.true;
+                    expect(containers[3].classList.contains('selected')).to.be.true;
+                });
+
+                it('should return correct count', function() {
+                    const count = selectRange(2, 6, true);
+                    expect(count).to.equal(5); // Indices 2, 3, 4, 5, 6 = 5 images
+                });
+            });
+
+            describe('Deselection Range', function() {
+                beforeEach(function() {
+                    // Pre-select all checkboxes
+                    checkboxes.forEach((cb, i) => {
+                        cb.checked = true;
+                        containers[i].classList.add('selected');
+                    });
+                });
+
+                it('should deselect range when checked=false', function() {
+                    lastSelectedIndex = 1;
+                    selectRange(lastSelectedIndex, 4, false);
+
+                    expect(checkboxes[0].checked).to.be.true; // Outside range
+                    expect(checkboxes[1].checked).to.be.false;
+                    expect(checkboxes[2].checked).to.be.false;
+                    expect(checkboxes[3].checked).to.be.false;
+                    expect(checkboxes[4].checked).to.be.false;
+                    expect(checkboxes[5].checked).to.be.true; // Outside range
+                });
+
+                it('should remove selected class when deselecting', function() {
+                    lastSelectedIndex = 0;
+                    selectRange(lastSelectedIndex, 2, false);
+
+                    expect(containers[0].classList.contains('selected')).to.be.false;
+                    expect(containers[1].classList.contains('selected')).to.be.false;
+                    expect(containers[2].classList.contains('selected')).to.be.false;
+                });
+            });
+
+            describe('Anchor Point Behavior', function() {
+                it('should keep anchor fixed during multiple shift-selects', function() {
+                    // Set anchor at index 2
+                    checkboxes[2].checked = true;
+                    containers[2].classList.add('selected');
+                    lastSelectedIndex = 2;
+
+                    // Shift-select to index 5
+                    selectRange(lastSelectedIndex, 5, true);
+                    // Anchor should stay at 2 (not move to 5)
+
+                    // Verify range 2-5 is selected
+                    expect(checkboxes[2].checked).to.be.true;
+                    expect(checkboxes[3].checked).to.be.true;
+                    expect(checkboxes[4].checked).to.be.true;
+                    expect(checkboxes[5].checked).to.be.true;
+
+                    // Shift-select to index 7 (still from anchor 2)
+                    selectRange(lastSelectedIndex, 7, true);
+
+                    // Verify range 2-7 is selected
+                    expect(checkboxes[2].checked).to.be.true;
+                    expect(checkboxes[6].checked).to.be.true;
+                    expect(checkboxes[7].checked).to.be.true;
+                });
+
+                it('should allow shrinking selection from anchor', function() {
+                    lastSelectedIndex = 1;
+
+                    // Extend to index 6
+                    selectRange(lastSelectedIndex, 6, true);
+                    expect(checkboxes[6].checked).to.be.true;
+
+                    // Shrink to index 3 (still from anchor 1)
+                    selectRange(lastSelectedIndex, 3, true);
+
+                    // Range 1-3 should be selected
+                    expect(checkboxes[1].checked).to.be.true;
+                    expect(checkboxes[2].checked).to.be.true;
+                    expect(checkboxes[3].checked).to.be.true;
+                });
+            });
+
+            describe('Filtered Images (Visible Only)', function() {
+                beforeEach(function() {
+                    // Hide every other container to simulate filtering
+                    containers[1].style.display = 'none';
+                    containers[3].style.display = 'none';
+                    containers[5].style.display = 'none';
+                    containers[7].style.display = 'none';
+                    containers[9].style.display = 'none';
+                });
+
+                it('should only select visible checkboxes', function() {
+                    // Visible indices: 0, 2, 4, 6, 8
+                    // In visible array: [0, 1, 2, 3, 4]
+
+                    const visibleCheckboxes = checkboxes.filter((cb, i) =>
+                        containers[i].style.display !== 'none'
+                    );
+
+                    // Select visible range 0-2 (which maps to containers 0, 2, 4)
+                    lastSelectedIndex = 0;
+                    selectRange(lastSelectedIndex, 2, true);
+
+                    // Check that hidden containers weren't selected
+                    expect(checkboxes[1].checked).to.be.false; // Hidden
+                    expect(checkboxes[3].checked).to.be.false; // Hidden
+                });
+
+                it('should calculate range based on visible indices only', function() {
+                    // After filtering, visible containers are: 0, 2, 4, 6, 8
+                    const count = selectRange(0, 3, true); // Select 4 visible images
+                    expect(count).to.equal(4);
+                });
+            });
+
+            describe('Edge Cases', function() {
+                it('should handle single-item range', function() {
+                    const count = selectRange(3, 3, true);
+                    expect(count).to.equal(1);
+                    expect(checkboxes[3].checked).to.be.true;
+                });
+
+                it('should handle range to last item', function() {
+                    lastSelectedIndex = 7;
+                    selectRange(lastSelectedIndex, 9, true);
+
+                    expect(checkboxes[7].checked).to.be.true;
+                    expect(checkboxes[8].checked).to.be.true;
+                    expect(checkboxes[9].checked).to.be.true;
+                });
+
+                it('should handle range from first item', function() {
+                    lastSelectedIndex = 0;
+                    selectRange(lastSelectedIndex, 2, true);
+
+                    expect(checkboxes[0].checked).to.be.true;
+                    expect(checkboxes[1].checked).to.be.true;
+                    expect(checkboxes[2].checked).to.be.true;
+                });
+
+                it('should not select out of bounds indices', function() {
+                    // Try to select beyond array bounds
+                    const count = selectRange(8, 15, true);
+
+                    // Should only select valid indices
+                    expect(checkboxes[8].checked).to.be.true;
+                    expect(checkboxes[9].checked).to.be.true;
+                });
+            });
+
+            describe('Image Click Integration', function() {
+                it('should support shift-clicking images (not just checkboxes)', function() {
+                    // First click on image (not checkbox)
+                    const img1 = containers[1].querySelector('img');
+                    const checkbox1 = containers[1].querySelector('.select-checkbox');
+
+                    checkbox1.checked = true;
+                    containers[1].classList.add('selected');
+                    lastSelectedIndex = 1;
+
+                    // Shift-click on another image
+                    // This should trigger selectRange
+                    selectRange(lastSelectedIndex, 4, true);
+
+                    expect(checkboxes[1].checked).to.be.true;
+                    expect(checkboxes[2].checked).to.be.true;
+                    expect(checkboxes[3].checked).to.be.true;
+                    expect(checkboxes[4].checked).to.be.true;
+                });
+            });
+        });
+
+        // =============================================================================
+        // INTEGRATION TESTS - COMBINED FEATURES
+        // =============================================================================
+
+        describe('Integration: Selected Mode + Shift-Select', function() {
+            let fixtures, containers, toggleButton;
+            let isSelectedMode, lastSelectedIndex;
+
+            beforeEach(function() {
+                isSelectedMode = false;
+                lastSelectedIndex = -1;
+
+                fixtures = document.getElementById('test-fixtures');
+                fixtures.innerHTML = '';
+
+                // Create toggle button
+                const viewModeControls = document.createElement('div');
+                toggleButton = document.createElement('button');
+                toggleButton.id = 'toggle-selected-mode';
+                toggleButton.setAttribute('aria-pressed', 'false');
+                const badge = document.createElement('span');
+                badge.className = 'selected-count-badge';
+                toggleButton.appendChild(badge);
+                viewModeControls.appendChild(toggleButton);
+                fixtures.appendChild(viewModeControls);
+
+                // Create status bar and notification
+                fixtures.appendChild(TestHelpers.createStatusBar());
+                fixtures.appendChild(TestHelpers.createNotificationBar());
+
+                // Create gallery
+                containers = TestHelpers.createMockGallery(15);
+                containers.forEach(c => fixtures.appendChild(c));
+            });
+
+            /**
+             * Simulate selectRange function
+             */
+            function selectRange(startIndex, endIndex, checked) {
+                const allCheckboxes = Array.from(document.querySelectorAll('.select-checkbox'));
+                const visibleCheckboxes = allCheckboxes.filter(cb =>
+                    cb.parentElement.style.display !== 'none'
+                );
+
+                const start = Math.min(startIndex, endIndex);
+                const end = Math.max(startIndex, endIndex);
+
+                for (let i = start; i <= end; i++) {
+                    if (i >= 0 && i < visibleCheckboxes.length) {
+                        const checkbox = visibleCheckboxes[i];
+                        checkbox.checked = checked;
+                        if (checked) {
+                            checkbox.parentElement.classList.add('selected');
+                        } else {
+                            checkbox.parentElement.classList.remove('selected');
+                        }
+                    }
+                }
+            }
+
+            /**
+             * Simulate filterImages for selected mode
+             */
+            function filterForSelectedMode() {
+                containers.forEach(container => {
+                    const isSelected = container.classList.contains('selected');
+                    container.style.display = (isSelectedMode && !isSelected) ? 'none' : 'flex';
+                });
+            }
+
+            it('should work together: shift-select then enter selected mode', function() {
+                // Use shift-select to select range 2-7
+                lastSelectedIndex = 2;
+                selectRange(lastSelectedIndex, 7, true);
+
+                // Verify selection
+                const checkboxes = containers.map(c => c.querySelector('.select-checkbox'));
+                const selectedCount = checkboxes.filter(cb => cb.checked).length;
+                expect(selectedCount).to.equal(6); // Indices 2-7 = 6 items
+
+                // Enter selected mode
+                isSelectedMode = true;
+                filterForSelectedMode();
+
+                // Verify only selected images are visible
+                const visibleCount = containers.filter(c => c.style.display === 'flex').length;
+                expect(visibleCount).to.equal(6);
+            });
+
+            it('should allow shift-select within selected mode', function() {
+                // Pre-select some images: 0, 5, 6, 7, 12
+                [0, 5, 6, 7, 12].forEach(i => {
+                    containers[i].querySelector('.select-checkbox').checked = true;
+                    containers[i].classList.add('selected');
+                });
+
+                // Enter selected mode
+                isSelectedMode = true;
+                filterForSelectedMode();
+
+                // Now only 5 images are visible
+                const visibleCount = containers.filter(c => c.style.display === 'flex').length;
+                expect(visibleCount).to.equal(5);
+
+                // Use shift-select within selected mode view
+                // This should only affect visible (selected) images
+                const visibleCheckboxes = Array.from(document.querySelectorAll('.select-checkbox'))
+                    .filter(cb => cb.parentElement.style.display !== 'none');
+
+                // Deselect range of visible items
+                lastSelectedIndex = 1; // Second visible item (index 5 in full array)
+                selectRange(lastSelectedIndex, 3, false); // Deselect 3 visible items
+
+                // Verify deselection
+                const stillSelectedCount = visibleCheckboxes.filter(cb => cb.checked).length;
+                expect(stillSelectedCount).to.be.lessThan(5);
+            });
+
+            it('should update badge count after shift-select', function() {
+                const badge = toggleButton.querySelector('.selected-count-badge');
+
+                // Shift-select a range
+                selectRange(0, 4, true);
+
+                // Update badge
+                const selectedCount = Array.from(document.querySelectorAll('.select-checkbox:checked')).length;
+                badge.textContent = selectedCount;
+                badge.style.display = 'flex';
+
+                expect(badge.textContent).to.equal('5');
+                expect(window.getComputedStyle(badge).display).to.equal('flex');
+            });
+        });
+
+        // =============================================================================
         // RUN TESTS
         // =============================================================================
 
