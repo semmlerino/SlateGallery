@@ -1,10 +1,10 @@
 {
-  "timestamp": "2025-12-06T20:44:22.196457+00:00",
+  "timestamp": "2025-12-06T21:17:31.968617+00:00",
   "folder_name": "slategallery_bundle_temp",
   "folder_path": "/tmp/slategallery_bundle_temp",
-  "original_size_bytes": 281135,
-  "encoded_size_bytes": 84104,
+  "original_size_bytes": 295118,
+  "encoded_size_bytes": 87212,
   "chunk_size_kb": 5120,
   "total_chunks": 1,
-  "compression_ratio": 3.3427066489108723
+  "compression_ratio": 3.3839150575608863
 }
