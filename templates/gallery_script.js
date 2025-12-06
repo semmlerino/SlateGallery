@@ -3,6 +3,20 @@
 // Part of the SlateGallery photo gallery generator
 
 document.addEventListener('DOMContentLoaded', function() {
+    // ===== SAFE LOCALSTORAGE DETECTION =====
+    // Property access to window.localStorage can throw in private/blocked modes
+    // This safe detection pattern prevents script abortion
+    const hasLocalStorage = (() => {
+        try {
+            const testKey = '__storage_test__';
+            window.localStorage.setItem(testKey, testKey);
+            window.localStorage.removeItem(testKey);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    })();
+
     // ===== SELECTION PERSISTENCE SYSTEM =====
     // Saves photo selections to localStorage and restores them on page load
     // Uses gallery identifier (based on page path) to prevent cross-gallery pollution
@@ -16,7 +30,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Save current selections to localStorage
     function saveSelections() {
-        if (!window.localStorage) return; // Bail if localStorage unavailable
+        if (!hasLocalStorage) return; // Bail if localStorage unavailable
 
         try {
             const selections = {};
@@ -47,7 +61,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Restore selections from localStorage
     function restoreSelections() {
-        if (!window.localStorage) return;
+        if (!hasLocalStorage) return;
 
         try {
             const storageKey = getGalleryIdentifier();
@@ -136,7 +150,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Restore hidden images from localStorage to in-memory cache
     function restoreHiddenImages() {
-        if (!window.localStorage) return;
+        if (!hasLocalStorage) return;
 
         try {
             const storageKey = getGalleryIdentifier() + '_hidden';
@@ -150,7 +164,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Debounced save to localStorage (300ms consistent with selections)
     const saveHiddenImages = debounce(() => {
-        if (!window.localStorage) return;
+        if (!hasLocalStorage) return;
 
         try {
             const storageKey = getGalleryIdentifier() + '_hidden';
@@ -641,7 +655,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const imgPath = img.getAttribute('data-full-image');
 
             const orientationMatch = selectedOrientations.length === 0 || selectedOrientations.includes(imgOrientation);
-            const focalMatch = selectedFocalLengths.length === 0 || selectedFocalLengths.includes(imgFocalLength.toString());
+            const focal = imgFocalLength ? String(imgFocalLength) : '';
+            const focalMatch = selectedFocalLengths.length === 0 || selectedFocalLengths.includes(focal);
 
             // Date matching: extract YYYY-MM-DD from ISO date string and check if it matches any selected day
             // Also handles "unknown" filter for images without EXIF dates
@@ -848,9 +863,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 const imgPath = imgElement.getAttribute('data-src-full') || container.getAttribute('data-full-image') || imgElement.getAttribute('src');
                 const focalLength = container.getAttribute('data-focal-length');
 
-                let focalLengthFormatted = parseFloat(focalLength);
-                if (focalLengthFormatted % 1 === 0) {
-                    focalLengthFormatted = focalLengthFormatted.toFixed(0);
+                const focalLengthParsed = parseFloat(focalLength);
+                let focalLengthFormatted;
+                if (isNaN(focalLengthParsed)) {
+                    focalLengthFormatted = 'unknown';
+                } else if (focalLengthParsed % 1 === 0) {
+                    focalLengthFormatted = focalLengthParsed.toFixed(0);
+                } else {
+                    focalLengthFormatted = focalLengthParsed;
                 }
 
                 const lastSlashIndex = imgPath.lastIndexOf('/');
@@ -1023,6 +1043,10 @@ document.addEventListener('DOMContentLoaded', function() {
             debouncedSave();
             // Update status bar
             updateCounts();
+            // Re-filter when in selected mode to hide unchecked items
+            if (galleryState.isSelectedMode) {
+                filterImages();
+            }
         }
     });
 
