@@ -19,7 +19,7 @@ sys.path.insert(0, str(os.path.dirname(os.path.abspath(__file__))))
 # Qt imports
 from PySide6 import QtWidgets
 from PySide6.QtCore import QRect, QSize, Qt, QTimer
-from PySide6.QtGui import QAbstractTextDocumentLayout, QColor, QMouseEvent, QTextDocument
+from PySide6.QtGui import QAbstractTextDocumentLayout, QColor, QTextDocument
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -126,58 +126,6 @@ class HtmlItemDelegate(QStyledItemDelegate):
         # Add vertical padding for better spacing
         height = int(doc.size().height()) + 12
         return QSize(int(doc.idealWidth()), height)
-
-
-class SelectableListWidget(QListWidget):
-    """QListWidget with custom selection: click=anchor, Ctrl+click=toggle, Shift+click=range.
-
-    This matches the selection behavior in the JavaScript gallery:
-    - Normal click: Sets anchor point only (no selection change)
-    - Ctrl+click: Toggles individual item and updates anchor
-    - Shift+click: Selects range from anchor to current based on anchor's state
-    """
-
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
-        super().__init__(parent)
-        self._anchor_index: int = -1
-        # Use ExtendedSelection as base - we override mousePressEvent for custom behavior
-        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-
-    @override
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        """Handle mouse clicks with custom selection logic."""
-        item = self.itemAt(event.pos())
-        if item is None:  # pyright: ignore[reportUnnecessaryComparison] - itemAt CAN return None
-            # Clicked empty space - clear anchor
-            self._anchor_index = -1
-            return
-
-        index = self.row(item)
-        modifiers = event.modifiers()
-
-        if modifiers & Qt.KeyboardModifier.ShiftModifier and self._anchor_index >= 0:
-            # Shift+click: Select range from anchor to current
-            self._select_range(self._anchor_index, index)
-        elif modifiers & Qt.KeyboardModifier.ControlModifier:
-            # Ctrl+click: Toggle individual item and update anchor
-            item.setSelected(not item.isSelected())
-            self._anchor_index = index
-        else:
-            # Normal click: Set anchor only, NO toggle
-            self._anchor_index = index
-
-    def _select_range(self, start: int, end: int) -> None:
-        """Select all items in range [start, end] based on anchor's state."""
-        if start > end:
-            start, end = end, start
-
-        anchor_item = self.item(self._anchor_index)
-        should_select = anchor_item.isSelected() if anchor_item else True
-
-        for i in range(start, end + 1):
-            item = self.item(i)
-            if item:
-                item.setSelected(should_select)
 
 
 # ----------------------------- Design Tokens -----------------------------
@@ -699,8 +647,9 @@ class GalleryGeneratorApp(QMainWindow):
         list_buttons_layout = QHBoxLayout()
         list_buttons_layout.setSpacing(SPACING_MD)
 
-        # Collections list (custom selection: click=anchor, Ctrl+click=toggle, Shift+click=range)
-        self.list_slates = SelectableListWidget()
+        # Collections list with standard Qt multi-selection
+        self.list_slates = QListWidget()
+        self.list_slates.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.list_slates.setItemDelegate(HtmlItemDelegate(self.list_slates))
         self.list_slates.setMinimumHeight(200)
         self.list_slates.setSizePolicy(
