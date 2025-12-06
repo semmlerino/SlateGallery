@@ -1,13 +1,10 @@
 {
-  "timestamp": "2025-12-06T20:26:29.473050+00:00",
+  "timestamp": "2025-12-06T20:44:22.196457+00:00",
   "folder_name": "slategallery_bundle_temp",
   "folder_path": "/tmp/slategallery_bundle_temp",
-  "original_size_bytes": 271411,
-  "encoded_size_bytes": 81600,
+  "original_size_bytes": 281135,
+  "encoded_size_bytes": 84104,
   "chunk_size_kb": 5120,
   "total_chunks": 1,
-  "compression_ratio": 3.3261151960784314,
-  "source_commit": "c5d11ab0547505c2a4341b72183072f98e59b3c5",
-  "source_branch": "master",
-  "bundle_timestamp": "2025-12-06T20:26:34.294367+00:00"
+  "compression_ratio": 3.3427066489108723
 }
