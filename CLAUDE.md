@@ -324,4 +324,4 @@ For GitHub Actions or similar:
 10. **Worker optimization**: Worker count is now 2x CPU cores for I/O operations (up to 16 workers)
 11. **Type safety**: Project uses basedpyright in "recommended" mode with 0 errors, 251 warnings (production-ready)
 
-Last updated: 2025-12-06 (git hook fix)
+Last updated: 2025-12-06 (branch-switch hook)
