@@ -18,8 +18,8 @@ sys.path.insert(0, str(os.path.dirname(os.path.abspath(__file__))))
 
 # Qt imports
 from PySide6 import QtWidgets
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QRect, QSize, Qt, QTimer
+from PySide6.QtGui import QAbstractTextDocumentLayout, QColor, QTextDocument
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -37,6 +37,9 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QVBoxLayout,
     QWidget,
 )
@@ -47,6 +50,79 @@ from core.config_manager import GalleryConfig, load_config, save_config
 # Import from our new modular structure
 from utils.logging_config import log_function, logger
 from utils.threading import GenerateGalleryThread, ScanThread
+
+
+class HtmlItemDelegate(QStyledItemDelegate):
+    """Custom delegate to render HTML/rich text in list items.
+
+    Note: Type ignores are needed due to incomplete PySide6 type stubs for QStyleOptionViewItem.
+    """
+
+    @override
+    def paint(  # pyright: ignore[reportUnknownMemberType]
+        self,
+        painter: object,
+        option: QStyleOptionViewItem,
+        index: object,
+    ) -> None:
+        from typing import Any
+
+        from PySide6.QtCore import QModelIndex
+        from PySide6.QtGui import QPainter
+
+        if not isinstance(painter, QPainter) or not isinstance(index, QModelIndex):
+            return
+
+        # Initialize style option
+        opt: Any = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+
+        # Get the style
+        style: Optional[QStyle] = opt.widget.style() if opt.widget else QApplication.style()
+
+        # Create text document for HTML rendering
+        doc = QTextDocument()
+        doc.setHtml(opt.text)
+        doc.setTextWidth(opt.rect.width())
+
+        # Clear text so it won't be drawn by default
+        opt.text = ""
+
+        # Draw the item background and selection
+        if style:
+            style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, opt.widget)
+
+        # Calculate text rect
+        text_rect: QRect = style.subElementRect(
+            QStyle.SubElement.SE_ItemViewItemText, opt, opt.widget
+        ) if style else opt.rect
+
+        # Draw the HTML content
+        painter.save()
+        painter.translate(text_rect.topLeft())
+        painter.setClipRect(QRect(0, 0, text_rect.width(), text_rect.height()))
+        ctx = QAbstractTextDocumentLayout.PaintContext()
+        doc.documentLayout().draw(painter, ctx)
+        painter.restore()
+
+    @override
+    def sizeHint(self, option: QStyleOptionViewItem, index: object) -> QSize:  # pyright: ignore[reportUnknownMemberType]
+        from typing import Any
+
+        from PySide6.QtCore import QModelIndex
+
+        if not isinstance(index, QModelIndex):
+            return QSize()
+
+        opt: Any = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+
+        doc = QTextDocument()
+        doc.setHtml(opt.text)
+        doc.setTextWidth(opt.rect.width() if opt.rect.width() > 0 else 200)
+
+        return QSize(int(doc.idealWidth()), int(doc.size().height()))
+
 
 # ----------------------------- Design Tokens -----------------------------
 
@@ -569,6 +645,7 @@ class GalleryGeneratorApp(QMainWindow):
 
         # Collections list
         self.list_slates = QListWidget()
+        self.list_slates.setItemDelegate(HtmlItemDelegate(self.list_slates))
         self.list_slates.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         self.list_slates.setMinimumHeight(200)
         self.list_slates.setSizePolicy(
@@ -984,8 +1061,8 @@ class GalleryGeneratorApp(QMainWindow):
                 if isinstance(images, list):
                     image_count = len(cast(list[object], images))
 
-            # Create item with count in display text
-            item = QListWidgetItem(f"{slate} ({image_count})")
+            # Create item with HTML: bold name, regular count
+            item = QListWidgetItem(f"<b>{slate}</b> ({image_count})")
             # Store original slate name for lookups
             item.setData(Qt.ItemDataRole.UserRole, slate)
             self.list_slates.addItem(item)
