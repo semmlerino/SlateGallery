@@ -1183,10 +1183,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Select/Deselect all within a slate
     function selectAllInSlate(slateElement) {
-        var checkboxes = slateElement.querySelectorAll('.select-checkbox');
-        checkboxes.forEach(function(checkbox) {
-            checkbox.checked = true;
-            checkbox.parentElement.classList.add('selected');
+        var containers = slateElement.querySelectorAll('.image-container');
+        containers.forEach(function(container) {
+            // Only select if container is visible
+            if (container.style.display !== 'none') {
+                var checkbox = container.querySelector('.select-checkbox');
+                if (checkbox) {
+                    checkbox.checked = true;
+                    container.classList.add('selected');
+                }
+            }
         });
         debouncedSave(); // Save selections after bulk operation
         updateCounts(); // Update status bar
