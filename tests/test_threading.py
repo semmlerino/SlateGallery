@@ -301,7 +301,7 @@ class TestGenerateGalleryThreadImproved:
         with qtbot.waitSignal(thread.gallery_complete, timeout=15000) as blocker:
             thread.start()
 
-        success, message = blocker.args
+        success, _message = blocker.args
 
         assert success is True
 
@@ -376,7 +376,7 @@ class TestGenerateGalleryThreadImproved:
         with qtbot.waitSignal(thread.gallery_complete, timeout=10000) as blocker:
             thread.start()
 
-        success, message = blocker.args
+        success, _message = blocker.args
         assert success is True
 
         # Thread should have processed multiple images in parallel
@@ -705,3 +705,307 @@ class TestThreadSafety:
             # Both threads should be stopped
             assert not thread1.isRunning()
             assert not thread2.isRunning()
+
+
+class TestParallelSlateProcessing:
+    """Tests for parallel EXIF processing (3+ slates).
+
+    The parallel code path triggers when scanning 3+ slates,
+    using ThreadPoolExecutor for slate-level parallelism.
+    """
+
+    @pytest.fixture
+    def multi_slate_environment(self):
+        """Create environment with 4+ slate directories for parallel processing tests."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_path = Path(temp_dir)
+
+            # Create image directories (4 slates to trigger parallel path)
+            images_dir = base_path / "images"
+            cache_dir = base_path / "cache"
+
+            images_dir.mkdir()
+            cache_dir.mkdir()
+
+            # Create 4 slate directories with different image counts
+            slate_dirs = []
+            for i in range(4):
+                slate_name = f"slate_{i}"
+                slate_dir = images_dir / slate_name
+                slate_dir.mkdir()
+                slate_dirs.append(slate_dir)
+
+                # Create 3 images per slate with varied EXIF data
+                for j in range(3):
+                    focal = 24 + (i * 10) + (j * 5)  # 24-69mm range
+                    create_real_test_image(
+                        slate_dir / f"img_{j}.jpg",
+                        focal_length=focal,
+                        date_taken=datetime(2024, 7, 15 + i, 10 + j)
+                    )
+
+            # Create cache manager
+            cache_manager = ImprovedCacheManager(base_dir=str(cache_dir))
+
+            yield {
+                'base_path': base_path,
+                'images_dir': str(images_dir),
+                'cache_dir': str(cache_dir),
+                'cache_manager': cache_manager,
+                'slate_dirs': slate_dirs,
+                'total_images': 12  # 4 slates * 3 images
+            }
+
+    def test_parallel_path_triggered_with_4_slates(self, multi_slate_environment, qtbot, thread_cleanup, caplog):
+        """Verify parallel code path activates with 4+ slates."""
+        import logging
+        caplog.set_level(logging.INFO)
+
+        thread = thread_cleanup(ScanThread(
+            multi_slate_environment['images_dir'],
+            multi_slate_environment['cache_manager']
+        ))
+
+        with qtbot.waitSignal(thread.scan_complete, timeout=10000) as blocker:
+            thread.start()
+
+        slates_result, _message = blocker.args
+
+        # Verify we got all 4 slates
+        assert len(slates_result) == 4
+
+        # Verify parallel processing was triggered (check log messages)
+        parallel_triggered = any(
+            "slates in parallel" in record.message
+            for record in caplog.records
+        )
+        assert parallel_triggered, "Expected parallel processing to be triggered for 4 slates"
+
+    def test_parallel_processing_completes_all_slates(self, multi_slate_environment, qtbot, thread_cleanup):
+        """All 4 slates are processed and contain correct image data."""
+        thread = thread_cleanup(ScanThread(
+            multi_slate_environment['images_dir'],
+            multi_slate_environment['cache_manager']
+        ))
+
+        with qtbot.waitSignal(thread.scan_complete, timeout=10000) as blocker:
+            thread.start()
+
+        slates_result, _message = blocker.args
+
+        # Verify all slates have images
+        for i in range(4):
+            slate_name = f"slate_{i}"
+            assert slate_name in slates_result, f"Missing slate: {slate_name}"
+            assert len(slates_result[slate_name]['images']) == 3, (
+                f"Expected 3 images in {slate_name}, got {len(slates_result[slate_name]['images'])}"
+            )
+
+        # Verify total image count
+        total_images = sum(len(s['images']) for s in slates_result.values())
+        assert total_images == 12
+
+        # Verify EXIF was extracted (images should have exif key)
+        for slate in slates_result.values():
+            for img in slate['images']:
+                assert 'exif' in img, "Images should have EXIF data"
+                assert 'path' in img, "Images should have path"
+
+    def test_parallel_progress_emissions_range(self, multi_slate_environment, qtbot, thread_cleanup):
+        """Progress signals are emitted in 50-100% range during parallel EXIF processing."""
+        thread = thread_cleanup(ScanThread(
+            multi_slate_environment['images_dir'],
+            multi_slate_environment['cache_manager']
+        ))
+
+        progress_values = []
+        thread.progress.connect(lambda v: progress_values.append(v))
+
+        with qtbot.waitSignal(thread.scan_complete, timeout=10000):
+            thread.start()
+
+        # Should have received progress values
+        assert len(progress_values) > 0, "Should receive progress signals"
+
+        # Filter for EXIF processing phase (50-100%)
+        exif_progress = [v for v in progress_values if v >= 50]
+        assert len(exif_progress) >= 4, (
+            f"Should have at least 4 progress emissions for 4 slates, got {len(exif_progress)}"
+        )
+
+        # Should reach 100%
+        assert any(v == 100 for v in progress_values), "Progress should reach 100%"
+
+    def test_parallel_stop_event_pre_set(self, multi_slate_environment, qtbot, thread_cleanup):
+        """Stop event pre-set before start results in cancellation.
+
+        This tests that the stop mechanism works for parallel processing,
+        by setting the stop event before processing begins.
+        """
+        thread = thread_cleanup(ScanThread(
+            multi_slate_environment['images_dir'],
+            multi_slate_environment['cache_manager']
+        ))
+
+        # Pre-set the stop event before starting
+        thread._stop_event.set()
+
+        with qtbot.waitSignal(thread.scan_complete, timeout=5000) as blocker:
+            thread.start()
+
+        slates_result, message = blocker.args
+
+        # Should have been cancelled since stop was set before processing
+        assert "cancelled" in message.lower(), (
+            f"Expected cancellation message, got: {message}"
+        )
+        assert slates_result == {}, "Expected empty results when stopped"
+
+    def test_parallel_results_written_to_slates(self, multi_slate_environment, qtbot, thread_cleanup):
+        """Results from parallel processing are correctly written back to slates dict."""
+        thread = thread_cleanup(ScanThread(
+            multi_slate_environment['images_dir'],
+            multi_slate_environment['cache_manager']
+        ))
+
+        with qtbot.waitSignal(thread.scan_complete, timeout=10000) as blocker:
+            thread.start()
+
+        slates_result, _ = blocker.args
+
+        # Each slate should have processed images with full data
+        for slate_name, slate_data in slates_result.items():
+            images = slate_data.get('images', [])
+            assert len(images) > 0, f"Slate {slate_name} should have images"
+
+            for img in images:
+                # Verify image has required fields from parallel processing
+                assert 'path' in img
+                assert 'exif' in img
+                assert 'mtime' in img, "Parallel processing should add mtime"
+
+                # Verify path is a valid string
+                assert isinstance(img['path'], str)
+                assert img['path'].endswith('.jpg')
+
+    def test_parallel_exif_data_extracted(self, multi_slate_environment, qtbot, thread_cleanup):
+        """EXIF data is actually extracted in parallel processing."""
+        thread = thread_cleanup(ScanThread(
+            multi_slate_environment['images_dir'],
+            multi_slate_environment['cache_manager']
+        ))
+
+        with qtbot.waitSignal(thread.scan_complete, timeout=10000) as blocker:
+            thread.start()
+
+        slates_result, _ = blocker.args
+
+        # Collect all focal lengths from extracted EXIF
+        # Note: EXIF key is "FocalLength" (capital letters) from image_processor
+        focal_lengths = []
+        for slate_data in slates_result.values():
+            for img in slate_data['images']:
+                exif = img.get('exif', {})
+                if 'FocalLength' in exif:
+                    focal_lengths.append(exif['FocalLength'])
+
+        # Should have extracted focal lengths from test images
+        assert len(focal_lengths) > 0, "Should have extracted FocalLength EXIF data"
+
+    def test_parallel_with_5_slates(self, qtbot, thread_cleanup, caplog):
+        """Test parallel processing with 5 slates (more workers possible)."""
+        import logging
+        caplog.set_level(logging.INFO)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_path = Path(temp_dir)
+            images_dir = base_path / "images"
+            cache_dir = base_path / "cache"
+            images_dir.mkdir()
+            cache_dir.mkdir()
+
+            # Create 5 slate directories
+            for i in range(5):
+                slate_dir = images_dir / f"slate_{i}"
+                slate_dir.mkdir()
+                for j in range(2):
+                    create_real_test_image(slate_dir / f"img_{j}.jpg", focal_length=35)
+
+            cache_manager = ImprovedCacheManager(base_dir=str(cache_dir))
+            thread = thread_cleanup(ScanThread(str(images_dir), cache_manager))
+
+            with qtbot.waitSignal(thread.scan_complete, timeout=10000) as blocker:
+                thread.start()
+
+            slates_result, message = blocker.args
+
+            # Verify all 5 slates processed
+            assert len(slates_result) == 5
+            assert "complete" in message.lower()
+
+            # Verify parallel workers were used
+            worker_log = [r for r in caplog.records if "workers for slate-level" in r.message]
+            assert len(worker_log) > 0, "Should log worker count"
+
+    def test_parallel_cache_integration(self, multi_slate_environment, qtbot, thread_cleanup):
+        """Verify cache is saved after parallel processing."""
+        thread = thread_cleanup(ScanThread(
+            multi_slate_environment['images_dir'],
+            multi_slate_environment['cache_manager']
+        ))
+
+        with qtbot.waitSignal(thread.scan_complete, timeout=10000) as blocker:
+            thread.start()
+
+        slates_result, _ = blocker.args
+
+        # Verify cache was saved
+        cached = multi_slate_environment['cache_manager'].load_cache(
+            multi_slate_environment['images_dir']
+        )
+        assert cached is not None, "Cache should have been saved"
+        assert len(cached) == 4, "Cache should contain all 4 slates"
+
+        # Verify cached data matches results
+        assert cached == slates_result
+
+    def test_parallel_error_does_not_crash(self, qtbot, thread_cleanup, caplog):
+        """Error in one slate during parallel processing doesn't crash the thread."""
+        import logging
+        caplog.set_level(logging.DEBUG)
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_path = Path(temp_dir)
+            images_dir = base_path / "images"
+            cache_dir = base_path / "cache"
+            images_dir.mkdir()
+            cache_dir.mkdir()
+
+            # Create 4 slate directories - one with a corrupt/unreadable file
+            for i in range(4):
+                slate_dir = images_dir / f"slate_{i}"
+                slate_dir.mkdir()
+                if i == 2:
+                    # Create a corrupted "image" file that will fail EXIF extraction
+                    corrupt_file = slate_dir / "corrupt.jpg"
+                    corrupt_file.write_bytes(b"not a valid image")
+                else:
+                    # Create valid images
+                    for j in range(2):
+                        create_real_test_image(slate_dir / f"img_{j}.jpg", focal_length=35)
+
+            cache_manager = ImprovedCacheManager(base_dir=str(cache_dir))
+            thread = thread_cleanup(ScanThread(str(images_dir), cache_manager))
+
+            with qtbot.waitSignal(thread.scan_complete, timeout=10000) as blocker:
+                thread.start()
+
+            slates_result, message = blocker.args
+
+            # Thread should still complete (not crash)
+            assert "complete" in message.lower(), f"Expected completion, got: {message}"
+
+            # Other slates should have been processed successfully
+            valid_slates = ['slate_0', 'slate_1', 'slate_3']
+            for slate_name in valid_slates:
+                assert slate_name in slates_result, f"Expected {slate_name} to be processed"
