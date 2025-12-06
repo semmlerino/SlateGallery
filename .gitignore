@@ -86,3 +86,11 @@ TEST_ISOLATION_FIX.md
 # User-specific cache and config
 .slate_gallery/
 cache/
+
+# Encoding hook system output
+.post-commit-output/
+encoded_releases/
+encoded_app_*.txt
+encoded_app_*.json
+slategallery_latest.txt
+slategallery_latest_metadata.json
