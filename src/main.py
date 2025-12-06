@@ -9,7 +9,7 @@ while maintaining identical functionality to the original.
 import os
 import sys
 import webbrowser
-from typing import Optional
+from typing import Optional, cast
 
 from typing_extensions import override
 
@@ -968,13 +968,28 @@ class GalleryGeneratorApp(QMainWindow):
 
     @log_function
     def populate_slates_list(self) -> None:
-        # Save currently selected slate names before clearing
-        selected_names: set[str] = {item.text() for item in self.list_slates.selectedItems()}
+        # Save currently selected slate names before clearing (using stored data, not display text)
+        selected_names: set[str] = {
+            str(item.data(Qt.ItemDataRole.UserRole)) for item in self.list_slates.selectedItems()
+        }
 
         self.list_slates.clear()
         for slate in sorted(self.filtered_slates.keys()):
-            item = QListWidgetItem(slate)
+            # Get image count from slate data
+            slate_data = self.filtered_slates[slate]
+            image_count = 0
+            if isinstance(slate_data, dict):
+                slate_dict = cast(dict[str, object], slate_data)
+                images = slate_dict.get("images", [])
+                if isinstance(images, list):
+                    image_count = len(cast(list[object], images))
+
+            # Create item with count in display text
+            item = QListWidgetItem(f"{slate} ({image_count})")
+            # Store original slate name for lookups
+            item.setData(Qt.ItemDataRole.UserRole, slate)
             self.list_slates.addItem(item)
+
             # Restore selection if this slate was previously selected
             if slate in selected_names:
                 item.setSelected(True)
@@ -1080,7 +1095,7 @@ class GalleryGeneratorApp(QMainWindow):
                 logger.warning("Generate gallery initiated without selecting any slates.")
                 return
 
-            selected_slates = [str(item.text()) for item in selected_items]
+            selected_slates = [str(item.data(Qt.ItemDataRole.UserRole)) for item in selected_items]
             output = self.output_dir
 
             if not output:
