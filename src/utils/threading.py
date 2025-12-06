@@ -204,29 +204,92 @@ class ScanThread(QtCore.QThread):
             total_slates: int = len(slates)
             logger.debug(f"Total slates to process: {total_slates}")
 
-            for processed_slates, (_slate, data) in enumerate(slates.items(), start=1):
-                # Check if we should stop
-                if self._stop_event.is_set():
-                    logger.info("Scan thread stopped by user request")
-                    self.scan_complete.emit({}, "Scan cancelled.")
-                    return
+            # Use parallel slate processing for 3+ slates, sequential for 1-2
+            if total_slates < 3:
+                # Sequential path for small slate counts (avoids ThreadPoolExecutor overhead)
+                for processed_slates, (_slate, data) in enumerate(slates.items(), start=1):
+                    # Check if we should stop
+                    if self._stop_event.is_set():
+                        logger.info("Scan thread stopped by user request")
+                        self.scan_complete.emit({}, "Scan cancelled.")
+                        return
 
-                image_paths = data.get("images", [])
-                # Use EXIF-aware processing to cache metadata
-                processed_images = self.cache_manager.process_images_batch_with_exif(
-                    [str(p) for p in image_paths],
-                    existing_cache=None,  # Fresh scan, no existing cache
-                    _callback=lambda p: self.progress.emit(50 + int(p / 2)),  # Second 50% is EXIF processing
-                    stop_event=self._stop_event,
-                )
-                data["images"] = processed_images  # pyright: ignore[reportArgumentType]
+                    image_paths = data.get("images", [])
+                    # Use EXIF-aware processing to cache metadata
+                    processed_images = self.cache_manager.process_images_batch_with_exif(
+                        [str(p) for p in image_paths],
+                        existing_cache=None,  # Fresh scan, no existing cache
+                        _callback=lambda p: self.progress.emit(50 + int(p / 2)),  # Second 50% is EXIF processing
+                        stop_event=self._stop_event,
+                    )
+                    data["images"] = processed_images  # pyright: ignore[reportArgumentType]
 
-                # Progress: 50-100% for EXIF processing
-                exif_progress: float = (
-                    50 + ((processed_slates / float(total_slates)) * 50) if total_slates > 0 else 100
-                )
-                self.progress.emit(int(exif_progress))
-                logger.debug(f"EXIF processing progress: {exif_progress:.2f}%")
+                    # Progress: 50-100% for EXIF processing
+                    exif_progress: float = (
+                        50 + ((processed_slates / float(total_slates)) * 50) if total_slates > 0 else 100
+                    )
+                    self.progress.emit(int(exif_progress))
+                    logger.debug(f"EXIF processing progress: {exif_progress:.2f}%")
+            else:
+                # Parallel slate processing for 3+ slates
+                logger.info(f"Processing {total_slates} slates in parallel for EXIF extraction")
+                max_slate_workers = min(total_slates, multiprocessing.cpu_count())
+                logger.info(f"Using {max_slate_workers} workers for slate-level parallelism")
+
+                def process_slate_exif(slate_name: str, slate_data: object) -> tuple[str, list[dict[str, object]]]:
+                    """Process EXIF for a single slate (runs in worker thread)."""
+                    if self._stop_event.is_set():
+                        return (slate_name, [])
+
+                    if not isinstance(slate_data, dict):
+                        return (slate_name, [])
+
+                    slate_dict = cast(dict[str, object], slate_data)
+                    image_paths_val = slate_dict.get("images", [])
+                    if not isinstance(image_paths_val, list):
+                        return (slate_name, [])
+                    image_paths_list = cast(list[object], image_paths_val)
+
+                    processed_images = self.cache_manager.process_images_batch_with_exif(
+                        [str(p) for p in image_paths_list],
+                        existing_cache=None,
+                        _callback=None,  # No per-image callback in parallel mode
+                        stop_event=self._stop_event,
+                    )
+                    return (slate_name, processed_images)
+
+                completed_count = 0
+                with ThreadPoolExecutor(max_workers=max_slate_workers) as executor:
+                    # Submit all slate processing tasks
+                    future_to_slate = {
+                        executor.submit(process_slate_exif, slate_name, slate_data): slate_name
+                        for slate_name, slate_data in slates.items()
+                    }
+
+                    # Collect results as they complete
+                    for future in as_completed(future_to_slate):
+                        if self._stop_event.is_set():
+                            logger.info("Scan thread stopped during parallel EXIF processing")
+                            for pending_future in future_to_slate:
+                                pending_future.cancel()
+                            executor.shutdown(wait=False, cancel_futures=True)
+                            self.scan_complete.emit({}, "Scan cancelled.")
+                            return
+
+                        slate_name = future_to_slate[future]
+                        try:
+                            slate_name_result, processed_images = future.result()
+                            slates[slate_name_result]["images"] = processed_images  # pyright: ignore[reportArgumentType]
+
+                            completed_count += 1
+                            exif_progress = 50 + ((completed_count / total_slates) * 50)
+                            self.progress.emit(int(exif_progress))
+                            logger.debug(f"Completed EXIF for slate {slate_name_result} ({completed_count}/{total_slates})")
+                        except Exception as e:
+                            logger.error(f"Error processing EXIF for slate {slate_name}: {e}", exc_info=True)
+                            completed_count += 1
+
+                logger.info(f"Parallel EXIF processing complete: {completed_count} slates processed")
 
             # Save the scanned slates to cache
             if len(self.root_dirs) == 1:
@@ -335,54 +398,134 @@ class GenerateGalleryThread(QtCore.QThread):
             total_slates: int = len(self.selected_slates)
             logger.info(f"Total slates selected: {total_slates}")
 
-            for processed_slates, slate in enumerate(self.selected_slates, start=1):
-                # Check if we should stop
-                if self._stop_event.is_set():
-                    logger.info("Gallery generation thread stopped by user request")
-                    self.gallery_complete.emit(False, "Gallery generation cancelled.")
-                    return
+            # Use parallel slate processing for 3+ slates, sequential for 1-2
+            if total_slates < 3:
+                # Sequential path for small slate counts (avoids overhead)
+                for processed_slates, slate in enumerate(self.selected_slates, start=1):
+                    # Check if we should stop
+                    if self._stop_event.is_set():
+                        logger.info("Gallery generation thread stopped by user request")
+                        self.gallery_complete.emit(False, "Gallery generation cancelled.")
+                        return
 
-                slate_data_val = self.slates_dict.get(slate)
-                images: list[object] = []
-                if isinstance(slate_data_val, dict):
-                    images_val = cast(dict[str, object], slate_data_val).get("images")
-                    if isinstance(images_val, list):
-                        images = cast(list[object], images_val)
+                    slate_data_val = self.slates_dict.get(slate)
+                    images: list[object] = []
+                    if isinstance(slate_data_val, dict):
+                        images_val = cast(dict[str, object], slate_data_val).get("images")
+                        if isinstance(images_val, list):
+                            images = cast(list[object], images_val)
 
-                # Always use parallel processing for better performance
-                # Even without thumbnails, we still need to extract EXIF data in parallel
-                slate_images: list[ImageData]
-                if len(images) > 1:
-                    slate_images = self.process_images_parallel(images)  # type: ignore[arg-type]
-                else:
-                    # Only use sequential for single image (rare case)
-                    slate_images = []
-                    for image in images:
-                        if not isinstance(image, dict):
-                            continue
-                        # Skip macOS resource fork files
-                        image_dict = cast(dict[str, object], image)
-                        image_path_val = image_dict.get("path")
-                        if not isinstance(image_path_val, str):
-                            continue
-                        if os.path.basename(image_path_val).startswith("._"):
-                            logger.debug(f"Skipping macOS resource fork file: {image_path_val}")
-                            continue
-                        # Get cached EXIF if available
-                        exif_val = image_dict.get("exif")
-                        cached_exif: Optional[dict[str, object]] = cast(dict[str, object], exif_val) if isinstance(exif_val, dict) else None
-                        image_data: Optional[ImageData] = self.process_image(image_path_val, cached_exif)
-                        if image_data is not None:
-                            slate_images.append(image_data)
+                    # Always use parallel processing for better performance
+                    # Even without thumbnails, we still need to extract EXIF data in parallel
+                    slate_images: list[ImageData]
+                    if len(images) > 1:
+                        slate_images = self.process_images_parallel(images)  # type: ignore[arg-type]
+                    else:
+                        # Only use sequential for single image (rare case)
+                        slate_images = []
+                        for image in images:
+                            if not isinstance(image, dict):
+                                continue
+                            # Skip macOS resource fork files
+                            image_dict = cast(dict[str, object], image)
+                            image_path_val = image_dict.get("path")
+                            if not isinstance(image_path_val, str):
+                                continue
+                            if os.path.basename(image_path_val).startswith("._"):
+                                logger.debug(f"Skipping macOS resource fork file: {image_path_val}")
+                                continue
+                            # Get cached EXIF if available
+                            exif_val = image_dict.get("exif")
+                            cached_exif: Optional[dict[str, object]] = cast(dict[str, object], exif_val) if isinstance(exif_val, dict) else None
+                            image_data: Optional[ImageData] = self.process_image(image_path_val, cached_exif)
+                            if image_data is not None:
+                                slate_images.append(image_data)
 
-                if slate_images:
-                    gallery_slates.append({"slate": slate, "images": slate_images})
+                    if slate_images:
+                        gallery_slates.append({"slate": slate, "images": slate_images})
 
-                progress: float = (
-                    (processed_slates / float(total_slates)) * 80 if total_slates > 0 else 80
-                )
-                self.progress.emit(int(progress))
-                logger.info(f"Metadata extraction progress: {progress:.2f}%")
+                    progress: float = (
+                        (processed_slates / float(total_slates)) * 80 if total_slates > 0 else 80
+                    )
+                    self.progress.emit(int(progress))
+                    logger.info(f"Metadata extraction progress: {progress:.2f}%")
+            else:
+                # Parallel slate processing for 3+ slates
+                logger.info(f"Processing {total_slates} slates in parallel for gallery generation")
+                max_slate_workers = min(total_slates, multiprocessing.cpu_count())
+                logger.info(f"Using {max_slate_workers} workers for slate-level parallelism")
+
+                def process_slate_images(slate_name: str) -> Optional[dict[str, object]]:
+                    """Process all images in a single slate (runs in worker thread)."""
+                    if self._stop_event.is_set():
+                        return None
+
+                    slate_data_val = self.slates_dict.get(slate_name)
+                    images: list[object] = []
+                    if isinstance(slate_data_val, dict):
+                        images_val = cast(dict[str, object], slate_data_val).get("images")
+                        if isinstance(images_val, list):
+                            images = cast(list[object], images_val)
+
+                    slate_images: list[ImageData]
+                    if len(images) > 1:
+                        slate_images = self.process_images_parallel(images)  # type: ignore[arg-type]
+                    else:
+                        # Sequential for single image
+                        slate_images = []
+                        for image in images:
+                            if not isinstance(image, dict):
+                                continue
+                            image_dict = cast(dict[str, object], image)
+                            image_path_val = image_dict.get("path")
+                            if not isinstance(image_path_val, str):
+                                continue
+                            if os.path.basename(image_path_val).startswith("._"):
+                                logger.debug(f"Skipping macOS resource fork file: {image_path_val}")
+                                continue
+                            exif_val = image_dict.get("exif")
+                            cached_exif: Optional[dict[str, object]] = cast(dict[str, object], exif_val) if isinstance(exif_val, dict) else None
+                            image_data_result: Optional[ImageData] = self.process_image(image_path_val, cached_exif)
+                            if image_data_result is not None:
+                                slate_images.append(image_data_result)
+
+                    if slate_images:
+                        return {"slate": slate_name, "images": slate_images}
+                    return None
+
+                completed_count = 0
+                with ThreadPoolExecutor(max_workers=max_slate_workers) as executor:
+                    # Submit all slate processing tasks
+                    future_to_slate = {
+                        executor.submit(process_slate_images, slate): slate
+                        for slate in self.selected_slates
+                    }
+
+                    # Collect results as they complete
+                    for future in as_completed(future_to_slate):
+                        if self._stop_event.is_set():
+                            logger.info("Gallery generation stopped during parallel slate processing")
+                            for pending_future in future_to_slate:
+                                pending_future.cancel()
+                            executor.shutdown(wait=False, cancel_futures=True)
+                            self.gallery_complete.emit(False, "Gallery generation cancelled.")
+                            return
+
+                        slate_name = future_to_slate[future]
+                        try:
+                            result = future.result()
+                            if result is not None:
+                                gallery_slates.append(result)
+
+                            completed_count += 1
+                            progress_val = (completed_count / total_slates) * 80
+                            self.progress.emit(int(progress_val))
+                            logger.info(f"Completed slate {slate_name} ({completed_count}/{total_slates})")
+                        except Exception as e:
+                            logger.error(f"Error processing slate {slate_name}: {e}", exc_info=True)
+                            completed_count += 1
+
+                logger.info(f"Parallel slate processing complete: {completed_count} slates processed")
 
             self.progress.emit(80)
             # Import here to avoid circular imports
