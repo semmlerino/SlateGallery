@@ -548,6 +548,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Update floating hide button visibility
         updateFloatingHideButton(selectedCount);
+
+        // Update floating clear selection button visibility
+        updateFloatingClearButton(selectedCount);
     }
 
     // Update Export Button Badge based on selection count
@@ -575,6 +578,18 @@ document.addEventListener('DOMContentLoaded', function() {
             floatingHideButton.style.display = 'block';
         } else {
             floatingHideButton.style.display = 'none';
+        }
+    }
+
+    // Update Floating Clear Selection Button visibility based on selection count
+    function updateFloatingClearButton(count) {
+        const floatingClearButton = document.getElementById('floating-clear-button');
+        if (!floatingClearButton) return;
+
+        if (count > 0) {
+            floatingClearButton.style.display = 'block';
+        } else {
+            floatingClearButton.style.display = 'none';
         }
     }
 
@@ -714,6 +729,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const floatingHideButton = document.getElementById('floating-hide-selected');
     if (floatingHideButton) {
         floatingHideButton.addEventListener('click', hideSelectedImages);
+    }
+
+    // Floating clear selection button event listener
+    const floatingClearBtn = document.getElementById('floating-clear-selection');
+    if (floatingClearBtn) {
+        floatingClearBtn.addEventListener('click', deselectAllPhotos);
     }
 
     // Keyboard shortcut for hide selected (Shift+H)
