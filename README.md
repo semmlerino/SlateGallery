@@ -14,7 +14,7 @@ A modular Python application for generating HTML photo galleries with EXIF data 
 ## Quick Start
 
 ### Requirements
-- Python 3.7+
+- Python 3.9+
 - PySide6 (Qt GUI framework)
 - Pillow (PIL) for image processing
 - Jinja2 for HTML templating
@@ -29,7 +29,7 @@ python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
-pip install PySide6 Pillow Jinja2 piexif
+pip install PySide6 Pillow Jinja2 piexif typing-extensions
 ```
 
 ### Running the Application

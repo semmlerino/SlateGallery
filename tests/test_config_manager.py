@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from src.core.config_manager import load_config, save_config
+from src.core.config_manager import GalleryConfig, load_config, save_config
 
 
 class TestConfigManagerImproved:
@@ -30,14 +30,14 @@ class TestConfigManagerImproved:
         # File doesn't exist yet
         assert not setup_config_env.exists()
 
-        current_dir, slate_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns = load_config()
+        config = load_config()
 
         # Should return defaults
-        assert current_dir == ""
-        assert slate_dirs == []
-        assert generate_thumbnails is False
-        assert thumbnail_size == 600
-        assert lazy_loading is True
+        assert config.current_slate_dir == ""
+        assert config.slate_dirs == []
+        assert config.generate_thumbnails is False
+        assert config.thumbnail_size == 600
+        assert config.lazy_loading is True
 
         # Note: load_config doesn't create the file, only save_config does
         # This is the actual behavior of the implementation
@@ -45,31 +45,35 @@ class TestConfigManagerImproved:
     def test_save_and_load_config(self, setup_config_env):
         """Test saving and loading configuration with real file."""
         # Test data
-        test_current_dir = "/test/current/dir"
-        test_slate_dirs = ["/test/dir1", "/test/dir2", "/test/dir3"]
-        test_generate_thumbnails = True
-        test_thumbnail_size = 800
-        test_lazy_loading = False
+        test_config = GalleryConfig(
+            current_slate_dir="/test/current/dir",
+            slate_dirs=["/test/dir1", "/test/dir2", "/test/dir3"],
+            selected_slate_dirs=["/test/dir1", "/test/dir2", "/test/dir3"],
+            generate_thumbnails=True,
+            thumbnail_size=800,
+            lazy_loading=False,
+            exclude_patterns=""
+        )
 
         # Save config
-        save_config(test_current_dir, test_slate_dirs, test_slate_dirs, test_generate_thumbnails, test_thumbnail_size, test_lazy_loading, "")
+        save_config(test_config)
 
         # Verify file was created
         assert setup_config_env.exists()
 
         # Load config
-        current_dir, slate_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns = load_config()
+        loaded_config = load_config()
 
         # Verify values
-        assert current_dir == test_current_dir
-        assert slate_dirs == test_slate_dirs
-        assert generate_thumbnails == test_generate_thumbnails
-        assert thumbnail_size == test_thumbnail_size
-        assert lazy_loading == test_lazy_loading
+        assert loaded_config.current_slate_dir == test_config.current_slate_dir
+        assert loaded_config.slate_dirs == test_config.slate_dirs
+        assert loaded_config.generate_thumbnails == test_config.generate_thumbnails
+        assert loaded_config.thumbnail_size == test_config.thumbnail_size
+        assert loaded_config.lazy_loading == test_config.lazy_loading
 
     def test_save_config_empty_values(self, setup_config_env):
         """Test saving config with empty values."""
-        save_config("", [], [], False, 600, True, "")
+        save_config(GalleryConfig())
 
         # Verify file content directly
         content = setup_config_env.read_text()
@@ -80,28 +84,40 @@ class TestConfigManagerImproved:
     def test_save_config_single_directory(self, setup_config_env):
         """Test saving config with a single directory."""
         single_dir = "/single/directory"
-        save_config(single_dir, [single_dir], [single_dir], True, 1200, True, "")
+        config = GalleryConfig(
+            current_slate_dir=single_dir,
+            slate_dirs=[single_dir],
+            selected_slate_dirs=[single_dir],
+            generate_thumbnails=True,
+            thumbnail_size=1200
+        )
+        save_config(config)
 
-        current_dir, slate_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns = load_config()
+        loaded_config = load_config()
 
-        assert current_dir == single_dir
-        assert slate_dirs == [single_dir]
-        assert generate_thumbnails is True
-        assert thumbnail_size == 1200
+        assert loaded_config.current_slate_dir == single_dir
+        assert loaded_config.slate_dirs == [single_dir]
+        assert loaded_config.generate_thumbnails is True
+        assert loaded_config.thumbnail_size == 1200
 
     def test_save_config_special_characters(self, setup_config_env):
         """Test saving config with special characters in paths."""
         special_dir = "/path/with spaces/and-special_chars!@#"
         special_dirs = [special_dir, "/another/path with/spaces"]
 
-        save_config(special_dir, special_dirs, special_dirs, False, 600, True, "")
+        config = GalleryConfig(
+            current_slate_dir=special_dir,
+            slate_dirs=special_dirs,
+            selected_slate_dirs=special_dirs
+        )
+        save_config(config)
 
-        current_dir, slate_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns = load_config()
+        loaded_config = load_config()
 
-        assert current_dir == special_dir
-        assert slate_dirs == special_dirs
-        assert generate_thumbnails is False
-        assert thumbnail_size == 600
+        assert loaded_config.current_slate_dir == special_dir
+        assert loaded_config.slate_dirs == special_dirs
+        assert loaded_config.generate_thumbnails is False
+        assert loaded_config.thumbnail_size == 600
 
     def test_config_file_corruption_recovery(self, setup_config_env):
         """Test recovery from corrupted config file."""
@@ -109,49 +125,65 @@ class TestConfigManagerImproved:
         setup_config_env.write_text("This is not valid INI content\n[Invalid\nNo closing bracket")
 
         # Should handle gracefully and return defaults
-        current_dir, slate_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns = load_config()
+        config = load_config()
 
-        assert current_dir == ""
-        assert slate_dirs == []
-        assert generate_thumbnails is False
-        assert thumbnail_size == 600
+        assert config.current_slate_dir == ""
+        assert config.slate_dirs == []
+        assert config.generate_thumbnails is False
+        assert config.thumbnail_size == 600
 
     def test_config_persistence_across_instances(self, setup_config_env):
         """Test that config persists across multiple load/save cycles."""
         # First save
-        save_config("/first", ["/dir1", "/dir2"], ["/dir1", "/dir2"], True, 800, True, "")
+        config = GalleryConfig(
+            current_slate_dir="/first",
+            slate_dirs=["/dir1", "/dir2"],
+            selected_slate_dirs=["/dir1", "/dir2"],
+            generate_thumbnails=True,
+            thumbnail_size=800
+        )
+        save_config(config)
 
         # Load and modify
-        current_dir, slate_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns = load_config()
-        assert current_dir == "/first"
+        loaded_config = load_config()
+        assert loaded_config.current_slate_dir == "/first"
 
         # Second save with modifications
-        slate_dirs.append("/dir3")
-        save_config(current_dir, slate_dirs, slate_dirs, False, thumbnail_size, True, "")
+        loaded_config.slate_dirs.append("/dir3")
+        loaded_config.generate_thumbnails = False
+        save_config(loaded_config)
 
         # Final load
-        current_dir, slate_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns = load_config()
-        assert slate_dirs == ["/dir1", "/dir2", "/dir3"]
-        assert generate_thumbnails is False
-        assert thumbnail_size == 800
+        final_config = load_config()
+        assert final_config.slate_dirs == ["/dir1", "/dir2", "/dir3"]
+        assert final_config.generate_thumbnails is False
+        assert final_config.thumbnail_size == 800
 
     def test_unicode_in_config(self, setup_config_env):
         """Test unicode characters in configuration."""
         unicode_dir = "/写真/фото/Photos"
         unicode_dirs = [unicode_dir, "/café/naïve/path"]
 
-        save_config(unicode_dir, unicode_dirs, unicode_dirs, True, 1200, False, "")
+        config = GalleryConfig(
+            current_slate_dir=unicode_dir,
+            slate_dirs=unicode_dirs,
+            selected_slate_dirs=unicode_dirs,
+            generate_thumbnails=True,
+            thumbnail_size=1200,
+            lazy_loading=False
+        )
+        save_config(config)
 
-        current_dir, slate_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns = load_config()
+        loaded_config = load_config()
 
-        assert current_dir == unicode_dir
-        assert slate_dirs == unicode_dirs
-        assert generate_thumbnails is True
-        assert thumbnail_size == 1200
+        assert loaded_config.current_slate_dir == unicode_dir
+        assert loaded_config.slate_dirs == unicode_dirs
+        assert loaded_config.generate_thumbnails is True
+        assert loaded_config.thumbnail_size == 1200
 
     def test_config_file_permissions(self, setup_config_env):
         """Test that config file is created with correct permissions."""
-        save_config("/test", ["/test"], ["/test"], False, 600, True, "")
+        save_config(GalleryConfig(current_slate_dir="/test", slate_dirs=["/test"], selected_slate_dirs=["/test"]))
 
         # Check file exists and is readable/writable
         assert setup_config_env.exists()
@@ -163,7 +195,14 @@ class TestConfigManagerImproved:
         import threading
 
         def write_config(thread_id):
-            save_config(f"/thread_{thread_id}", [f"/dir_{thread_id}"], [f"/dir_{thread_id}"], thread_id % 2 == 0, 600 + thread_id * 200, True, "")
+            config = GalleryConfig(
+                current_slate_dir=f"/thread_{thread_id}",
+                slate_dirs=[f"/dir_{thread_id}"],
+                selected_slate_dirs=[f"/dir_{thread_id}"],
+                generate_thumbnails=thread_id % 2 == 0,
+                thumbnail_size=600 + thread_id * 200
+            )
+            save_config(config)
 
         # Create multiple threads
         threads = []
@@ -177,9 +216,9 @@ class TestConfigManagerImproved:
             t.join()
 
         # Config should still be valid (last write wins)
-        current_dir, slate_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns = load_config()
-        assert current_dir.startswith("/thread_")
-        assert len(slate_dirs) == 1
+        config = load_config()
+        assert config.current_slate_dir.startswith("/thread_")
+        assert len(config.slate_dirs) == 1
 
 
 class TestConfigManagerEdgeCases:
@@ -198,7 +237,14 @@ class TestConfigManagerEdgeCases:
         monkeypatch.setattr('src.core.config_manager.CONFIG_FILE', str(readonly_config))
 
         # Attempt to save (should handle gracefully)
-        save_config("/new", ["/new"], ["/new"], True, 800, True, "")
+        config = GalleryConfig(
+            current_slate_dir="/new",
+            slate_dirs=["/new"],
+            selected_slate_dirs=["/new"],
+            generate_thumbnails=True,
+            thumbnail_size=800
+        )
+        save_config(config)
 
         # Check that error was logged
         assert "Permission" in caplog.text or "Error" in caplog.text
@@ -210,16 +256,24 @@ class TestConfigManagerEdgeCases:
 
         monkeypatch.setattr('src.core.config_manager.CONFIG_FILE', str(config_file))
 
-        current_dir, slate_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns = load_config()
+        config = load_config()
 
         # Should return defaults
-        assert current_dir == ""
-        assert slate_dirs == []
-        assert generate_thumbnails is False
-        assert thumbnail_size == 600
+        assert config.current_slate_dir == ""
+        assert config.slate_dirs == []
+        assert config.generate_thumbnails is False
+        assert config.thumbnail_size == 600
 
         # Should create proper section on next save
-        save_config("/test", ["/test"], ["/test"], True, 1200, False, "")
+        new_config = GalleryConfig(
+            current_slate_dir="/test",
+            slate_dirs=["/test"],
+            selected_slate_dirs=["/test"],
+            generate_thumbnails=True,
+            thumbnail_size=1200,
+            lazy_loading=False
+        )
+        save_config(new_config)
 
         # Verify Settings section was created
         content = config_file.read_text()

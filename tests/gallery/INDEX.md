@@ -13,7 +13,6 @@ firefox tests/gallery/gallery_tests.html
 ### Read Documentation
 - **Just want to run tests?** → [TEST_GUIDE.md](TEST_GUIDE.md) (2 min read)
 - **Want full details?** → [README.md](README.md) (10 min read)
-- **Want executive summary?** → [SUMMARY.md](SUMMARY.md) (5 min read)
 
 ## 📁 Files in This Directory
 
@@ -41,13 +40,6 @@ firefox tests/gallery/gallery_tests.html
   - Helper functions reference
   - CI/CD integration guide
   - 10-minute read
-
-- **`SUMMARY.md`** (10 KB)
-  - Executive summary
-  - Test coverage breakdown
-  - Recent fixes validated
-  - Metrics and statistics
-  - 5-minute read
 
 - **`INDEX.md`** (this file)
   - Navigation hub
@@ -97,15 +89,6 @@ firefox tests/gallery/gallery_tests.html
 → Read [README.md § CI/CD Integration](README.md#cicd-integration)
 → Use `./run_tests.sh headless`
 
-**See recent changes**
-→ Read [SUMMARY.md § Recent Fixes](SUMMARY.md#recent-fixes-validated)
-
-**Understand architecture**
-→ Read [SUMMARY.md § Architecture Decisions](SUMMARY.md#architecture-decisions)
-
-**Get metrics/stats**
-→ Read [SUMMARY.md § Key Metrics](SUMMARY.md#key-metrics)
-
 **Troubleshoot issues**
 → Read [TEST_GUIDE.md § Debugging](TEST_GUIDE.md#-debugging-failed-tests)
 → Or [README.md § Troubleshooting](README.md#troubleshooting)
@@ -137,7 +120,6 @@ firefox tests/gallery/gallery_tests.html
 ### In This Directory
 - [TEST_GUIDE.md](TEST_GUIDE.md) - Quick reference
 - [README.md](README.md) - Full documentation
-- [SUMMARY.md](SUMMARY.md) - Executive summary
 
 ### In Parent `tests/` Directory
 - [../TESTING_BEST_PRACTICES.md](../TESTING_BEST_PRACTICES.md) - Python testing guide
@@ -218,13 +200,12 @@ firefox tests/gallery/gallery_tests.html
 - 🧪 [Run Tests](gallery_tests.html)
 - 📖 [Quick Guide](TEST_GUIDE.md)
 - 📚 [Full Docs](README.md)
-- 📊 [Summary](SUMMARY.md)
 - 🎨 [Gallery Template](../../templates/gallery_template.html)
 - 🐛 [Main Tests](../)
 
 ---
 
-**Last Updated**: 2025-10-18
+**Last Updated**: 2025-12-06
 **Total Tests**: 75
 **Estimated Read Time**: 2 minutes
 **Estimated Run Time**: 1-2 seconds

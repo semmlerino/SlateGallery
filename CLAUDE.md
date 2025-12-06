@@ -11,6 +11,8 @@ SlateGallery is a PyQt6-based photo gallery generator that:
 - Supports optional thumbnail generation with parallel processing
 - Has a companion 3DE4 script (`ImportPhotosFromClipboard.py`)
 
+**Note**: This is a personal project. Security hardening is not a priority.
+
 ## Recent Updates & Important Context
 
 ### macOS Resource Fork Files (._ files)
@@ -86,16 +88,19 @@ basedpyright src/      # Type checking
 - 🟦 **JAVASCRIPT_TESTING.md** - JavaScript/HTML template testing guide (NEW!)
 
 ### Python Test Suite Overview
-- **163 total tests** covering all major functionality and real-world scenarios
+- **188 total tests** covering major functionality and real-world scenarios
 - **Test framework**: pytest with pytest-qt for Qt components
-- **Current coverage**: 45% overall (625/1,127 lines)
-  - ✅ Excellent: image_processor (97%), config_manager (98%), gallery_generator (95%), cache_manager (94%)
-  - ⚠️ Needs improvement: threading (44%), main UI (0%)
-- **Coverage goals**: 45% → 60% (immediate), 60% → 70% (short-term)
+- **Current coverage**: 13% overall (174/1,377 lines)
+  - cache_manager: 32%
+  - gallery_generator: 36%
+  - threading: 13%
+  - image_processor: 11%
+  - config_manager: 12%
+  - main UI: 0% (typical for Qt UI code)
 - **Key test files**:
   - `test_integration_realistic.py` - Real-world integration tests without mocking
   - `test_performance_benchmark.py` - Performance benchmarking suite
-  - `test_threading_errors.py` - Threading error scenarios (to be implemented, see THREADING_ERROR_TESTS_GUIDE.md)
+  - `test_threading.py` - Thread lifecycle and signal tests
 
 ### JavaScript Test Suite Overview (NEW!)
 - **99 total tests** covering gallery template frontend functionality

@@ -55,7 +55,7 @@ def generate_html_gallery(
     allowed_root_dirs: Union[str, list[str]],
     status_callback: Callable[[str], None],
     lazy_loading: bool = True
-) -> bool:
+) -> tuple[bool, int]:
     """Generate HTML gallery from processed image data.
 
     Args:
@@ -69,7 +69,7 @@ def generate_html_gallery(
         lazy_loading: Whether to enable lazy loading in gallery
 
     Returns:
-        True if gallery generated successfully, False otherwise
+        Tuple of (success: bool, skipped_count: int)
     """
     return _generate_html_gallery(
         gallery_data, focal_length_data, date_data,

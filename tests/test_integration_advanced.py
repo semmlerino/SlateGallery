@@ -8,7 +8,7 @@ import pytest
 from PIL import Image
 
 from src.core.cache_manager import ImprovedCacheManager
-from src.core.config_manager import load_config, save_config
+from src.core.config_manager import GalleryConfig, load_config, save_config
 from src.core.gallery_generator import generate_html_gallery
 from src.core.image_processor import scan_directories
 from src.utils.threading import GenerateGalleryThread, ScanThread
@@ -70,15 +70,15 @@ class TestLazyLoadingIntegration:
                           str(gallery_environment['config_file']))
 
         # Test with lazy loading enabled
-        save_config(
-            str(gallery_environment['images_dir']),
-            [str(gallery_environment['images_dir'])],
-            [str(gallery_environment['images_dir'])],
+        save_config(GalleryConfig(
+            current_slate_dir=str(gallery_environment['images_dir']),
+            slate_dirs=[str(gallery_environment['images_dir'])],
+            selected_slate_dirs=[str(gallery_environment['images_dir'])],
             generate_thumbnails=True,
             thumbnail_size=600,
             lazy_loading=True,
             exclude_patterns=""
-        )
+        ))
 
         # Scan directories
         scan_directories(str(gallery_environment['images_dir']))
@@ -178,17 +178,25 @@ class TestConfigurationPersistence:
 
         for current_dir, slate_dirs, selected_dirs, gen_thumb, thumb_size, lazy, exclude in test_configs:
             # Save configuration
-            save_config(current_dir, slate_dirs, selected_dirs, gen_thumb, thumb_size, lazy, exclude)
+            save_config(GalleryConfig(
+                current_slate_dir=current_dir,
+                slate_dirs=slate_dirs,
+                selected_slate_dirs=selected_dirs,
+                generate_thumbnails=gen_thumb,
+                thumbnail_size=thumb_size,
+                lazy_loading=lazy,
+                exclude_patterns=exclude
+            ))
 
             # Load and verify
             loaded = load_config()
-            assert loaded[0] == current_dir
-            assert loaded[1] == slate_dirs
-            assert loaded[2] == selected_dirs
-            assert loaded[3] == gen_thumb
-            assert loaded[4] == thumb_size
-            assert loaded[5] == lazy
-            assert loaded[6] == exclude
+            assert loaded.current_slate_dir == current_dir
+            assert loaded.slate_dirs == slate_dirs
+            assert loaded.selected_slate_dirs == selected_dirs
+            assert loaded.generate_thumbnails == gen_thumb
+            assert loaded.thumbnail_size == thumb_size
+            assert loaded.lazy_loading == lazy
+            assert loaded.exclude_patterns == exclude
 
     def test_config_backwards_compatibility(self, tmp_path, monkeypatch):
         """Test that old config files without lazy_loading still work."""
@@ -204,12 +212,12 @@ thumbnail_size = 800
 """)
 
         # Should load with default lazy_loading=True
-        current_dir, slate_dirs, selected_slate_dirs, gen_thumb, thumb_size, lazy, exclude_patterns = load_config()
-        assert current_dir == "/old/path"
-        assert slate_dirs == ["/old/path", "/another/path"]
-        assert gen_thumb is True
-        assert thumb_size == 800
-        assert lazy is True  # Default value
+        config = load_config()
+        assert config.current_slate_dir == "/old/path"
+        assert config.slate_dirs == ["/old/path", "/another/path"]
+        assert config.generate_thumbnails is True
+        assert config.thumbnail_size == 800
+        assert config.lazy_loading is True  # Default value
 
 
 class TestMixedImageFormats:
@@ -495,15 +503,15 @@ class TestEndToEndWorkflow:
         monkeypatch.setattr('src.core.config_manager.CONFIG_FILE', str(config_file))
 
         # Save initial config
-        save_config(
-            str(photos_dir),
-            [str(photos_dir)],
-            [str(photos_dir)],
+        save_config(GalleryConfig(
+            current_slate_dir=str(photos_dir),
+            slate_dirs=[str(photos_dir)],
+            selected_slate_dirs=[str(photos_dir)],
             generate_thumbnails=True,
             thumbnail_size=800,
             lazy_loading=True,
             exclude_patterns=""
-        )
+        ))
 
         # Step 1: Scan directories
         cache_manager = ImprovedCacheManager(base_dir=str(tmp_path / 'cache'))
@@ -586,21 +594,21 @@ class TestEndToEndWorkflow:
                 assert max(thumb.size) <= 800
 
         # Step 4: Test configuration update
-        save_config(
-            str(photos_dir),
-            [str(photos_dir)],
-            [str(photos_dir)],
+        save_config(GalleryConfig(
+            current_slate_dir=str(photos_dir),
+            slate_dirs=[str(photos_dir)],
+            selected_slate_dirs=[str(photos_dir)],
             generate_thumbnails=False,
             thumbnail_size=600,
             lazy_loading=False,
             exclude_patterns=""
-        )
+        ))
 
         # Reload config
         loaded = load_config()
-        assert loaded[3] is False  # generate_thumbnails
-        assert loaded[4] == 600    # thumbnail_size
-        assert loaded[5] is False  # lazy_loading
+        assert loaded.generate_thumbnails is False
+        assert loaded.thumbnail_size == 600
+        assert loaded.lazy_loading is False
 
 
 class TestCacheInvalidation:

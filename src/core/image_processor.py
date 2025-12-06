@@ -4,7 +4,7 @@ import hashlib
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Union, cast
+from typing import Any, Optional, Union, cast
 
 from PIL import Image
 from PIL.ExifTags import IFD, TAGS
@@ -245,13 +245,19 @@ def scan_multiple_directories(root_dirs: list[str], exclude_patterns: str = "") 
 
 
 @log_function
-def generate_thumbnail(image_path: str, thumb_dir: str, size: Union[int, tuple[int, int], None] = None) -> dict[str, str]:
+def generate_thumbnail(
+    image_path: str,
+    thumb_dir: str,
+    size: Union[int, tuple[int, int], None] = None,
+    orientation: Optional[int] = None
+) -> dict[str, str]:
     """Generate a thumbnail for an image at specified size.
 
     Args:
         image_path: Path to the original image
         thumb_dir: Directory to store thumbnails
         size: Single size as an integer (e.g., 600 for 600x600) or tuple (width, height)
+        orientation: Optional EXIF orientation value (1-8). If provided, skips EXIF read.
 
     Returns:
         Dict with thumbnail path keyed by size string (e.g., "600x600")
@@ -290,9 +296,10 @@ def generate_thumbnail(image_path: str, thumb_dir: str, size: Union[int, tuple[i
                 rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
                 img = rgb_img
 
-            # Preserve EXIF orientation
-            exif = img.getexif() if hasattr(img, 'getexif') else None
-            orientation = exif.get(0x0112) if exif else None
+            # Use provided orientation or extract from EXIF
+            if orientation is None:
+                exif = img.getexif() if hasattr(img, 'getexif') else None
+                orientation = exif.get(0x0112) if exif else None
 
             # Rotate image based on EXIF orientation
             if orientation:

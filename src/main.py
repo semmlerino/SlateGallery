@@ -42,7 +42,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.cache_manager import ImprovedCacheManager
-from core.config_manager import load_config, save_config
+from core.config_manager import GalleryConfig, load_config, save_config
 
 # Import from our new modular structure
 from utils.logging_config import log_function, logger
@@ -170,7 +170,15 @@ class GalleryGeneratorApp(QMainWindow):
         self.setGeometry(100, 100, 900, 700)
 
         # Load configuration with multiple directories
-        self.current_root_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref = load_config()
+        self.config: GalleryConfig = load_config()
+        # Aliases for backward compatibility
+        self.current_root_dir = self.config.current_slate_dir
+        self.cached_root_dirs = self.config.slate_dirs
+        self.selected_slate_dirs = self.config.selected_slate_dirs
+        self.generate_thumbnails_pref = self.config.generate_thumbnails
+        self.thumbnail_size = self.config.thumbnail_size
+        self.lazy_loading_pref = self.config.lazy_loading
+        self.exclude_patterns_pref = self.config.exclude_patterns
         self.output_dir = os.path.expanduser("~")
 
         self.cache_manager = ImprovedCacheManager(
@@ -180,7 +188,7 @@ class GalleryGeneratorApp(QMainWindow):
         if not self.current_root_dir:
             self.current_root_dir = os.path.expanduser("~")
             self.cached_root_dirs.append(self.current_root_dir)
-            save_config(self.current_root_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
+            self._sync_config_and_save()
             logger.info(f"Default root directory set to home directory: {self.current_root_dir}")
 
         self.slates_dict = {}
@@ -218,6 +226,17 @@ class GalleryGeneratorApp(QMainWindow):
                 self.progress_bar.setValue(100)
             else:
                 self.update_status("No cache found. Please scan directory.")
+
+    def _sync_config_and_save(self) -> None:
+        """Sync alias attributes back to config dataclass and save."""
+        self.config.current_slate_dir = self.current_root_dir
+        self.config.slate_dirs = self.cached_root_dirs
+        self.config.selected_slate_dirs = self.selected_slate_dirs
+        self.config.generate_thumbnails = self.generate_thumbnails_pref
+        self.config.thumbnail_size = self.thumbnail_size
+        self.config.lazy_loading = self.lazy_loading_pref
+        self.config.exclude_patterns = self.exclude_patterns_pref
+        save_config(self.config)
 
     def setup_style(self):
         self.setStyleSheet(f"""
@@ -441,18 +460,8 @@ class GalleryGeneratorApp(QMainWindow):
             }}
         """)
 
-    def initUI(self):
-        # Central widget with margin
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-
-        # Main layout with margins
-        main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(SPACING_LG, SPACING_LG, SPACING_LG, SPACING_LG)
-        main_layout.setSpacing(SPACING_SM)  # Tighter spacing between cards
-        central_widget.setLayout(main_layout)
-
-        # Directory Card
+    def _create_directory_card(self) -> CardWidget:
+        """Create the directory selection card with browse and scan buttons."""
         dir_card = CardWidget()  # No title - self-evident
         dir_layout = QGridLayout()
         dir_layout.setSpacing(SPACING_SM)
@@ -481,16 +490,17 @@ class GalleryGeneratorApp(QMainWindow):
         dir_layout.setColumnStretch(2, 0)
 
         # Add Scan button in third row of directory card
-        btn_scan = QPushButton("Scan Selected Directories")
-        btn_scan.setObjectName("secondaryButton")  # Visible but not primary
-        btn_scan.setToolTip("Scan all checked directories for photo collections")
-        _ = btn_scan.clicked.connect(self.on_scan)
-        dir_layout.addWidget(btn_scan, 2, 1, 1, 2)  # Row 2, span across columns 1-2
+        self.btn_scan = QPushButton("Scan Selected Directories")
+        self.btn_scan.setObjectName("secondaryButton")  # Visible but not primary
+        self.btn_scan.setToolTip("Scan all checked directories for photo collections")
+        _ = self.btn_scan.clicked.connect(self.on_scan)
+        dir_layout.addWidget(self.btn_scan, 2, 1, 1, 2)  # Row 2, span across columns 1-2
 
         dir_card.content_layout.addLayout(dir_layout)
-        main_layout.addWidget(dir_card)
+        return dir_card
 
-        # Slates Card
+    def _create_slates_card(self) -> CardWidget:
+        """Create the slates selection card with filters and list."""
         selection_card = CardWidget()  # No card title
 
         # Centered "Slates" title (compact with subtle background)
@@ -566,19 +576,20 @@ class GalleryGeneratorApp(QMainWindow):
         selection_buttons_layout.addWidget(btn_deselect_all)
 
         # Add Refresh button
-        btn_refresh = QPushButton("Refresh")
-        btn_refresh.setObjectName("tertiaryButton")
-        btn_refresh.setToolTip("Warning: This will re-scan the directory and clear current selections")
-        _ = btn_refresh.clicked.connect(self.on_refresh)
-        selection_buttons_layout.addWidget(btn_refresh)
+        self.btn_refresh = QPushButton("Refresh")
+        self.btn_refresh.setObjectName("tertiaryButton")
+        self.btn_refresh.setToolTip("Warning: This will re-scan the directory and clear current selections")
+        _ = self.btn_refresh.clicked.connect(self.on_refresh)
+        selection_buttons_layout.addWidget(self.btn_refresh)
 
         selection_buttons_layout.addStretch()
         list_buttons_layout.addLayout(selection_buttons_layout)
 
         selection_card.content_layout.addLayout(list_buttons_layout)
-        main_layout.addWidget(selection_card)
+        return selection_card
 
-        # Gallery Options Card
+    def _create_options_card(self) -> CardWidget:
+        """Create the gallery options card with thumbnail and lazy loading settings."""
         options_card = CardWidget("Gallery Options")
 
         # Thumbnail generation option with size selector
@@ -631,24 +642,24 @@ class GalleryGeneratorApp(QMainWindow):
         _ = self.chk_lazy_loading.stateChanged.connect(self.on_lazy_loading_pref_changed)
         options_card.content_layout.addWidget(self.chk_lazy_loading)
 
-        main_layout.addWidget(options_card)
+        return options_card
 
-        btn_generate = QPushButton("Generate Gallery")
-        btn_generate.setObjectName("primaryButton")
-        btn_generate.setToolTip("Generate HTML gallery from selected collections")
-        _ = btn_generate.clicked.connect(self.on_generate)
-        main_layout.addWidget(btn_generate)
+    def _create_action_buttons(self, layout: QVBoxLayout) -> None:
+        """Create and add the generate and open gallery buttons to layout."""
+        self.btn_generate = QPushButton("Generate Gallery")
+        self.btn_generate.setObjectName("primaryButton")
+        self.btn_generate.setToolTip("Generate HTML gallery from selected collections")
+        _ = self.btn_generate.clicked.connect(self.on_generate)
+        layout.addWidget(self.btn_generate)
 
-        self.btn_generate = btn_generate
+        self.btn_open_gallery = QPushButton("Open Gallery")
+        self.btn_open_gallery.setObjectName("accentButton")
+        _ = self.btn_open_gallery.clicked.connect(self.on_open_gallery)
+        self.btn_open_gallery.setEnabled(False)
+        layout.addWidget(self.btn_open_gallery)
 
-        btn_open_gallery = QPushButton("Open Gallery")
-        btn_open_gallery.setObjectName("accentButton")
-        _ = btn_open_gallery.clicked.connect(self.on_open_gallery)
-        btn_open_gallery.setEnabled(False)
-        main_layout.addWidget(btn_open_gallery)
-
-        self.btn_open_gallery = btn_open_gallery
-
+    def _create_status_bar(self, layout: QVBoxLayout) -> None:
+        """Create and add the status bar with progress indicator to layout."""
         status_layout = QHBoxLayout()
         self.lbl_status = QLabel("Select a photo directory and click 'Scan Directory' to begin")
         status_layout.addWidget(self.lbl_status)
@@ -658,14 +669,36 @@ class GalleryGeneratorApp(QMainWindow):
         self.progress_bar.setVisible(False)  # Hidden by default
         status_layout.addWidget(self.progress_bar)
 
-        main_layout.addLayout(status_layout)
+        layout.addLayout(status_layout)
+
+    def initUI(self):
+        """Initialize the main UI layout with all cards and controls."""
+        # Central widget with margin
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+
+        # Main layout with margins
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(SPACING_LG, SPACING_LG, SPACING_LG, SPACING_LG)
+        main_layout.setSpacing(SPACING_SM)  # Tighter spacing between cards
+        central_widget.setLayout(main_layout)
+
+        # Add cards
+        main_layout.addWidget(self._create_directory_card())
+        main_layout.addWidget(self._create_slates_card())
+        main_layout.addWidget(self._create_options_card())
+
+        # Add action buttons and status bar
+        self._create_action_buttons(main_layout)
+        self._create_status_bar(main_layout)
 
 
     @log_function
     def update_cached_dirs(self, new_dir):
         if new_dir and new_dir not in self.cached_root_dirs:
             self.cached_root_dirs.append(new_dir)
-            save_config(new_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
+            self.current_root_dir = new_dir
+            self._sync_config_and_save()
             logger.info(f"Added new directory to cached slate directories: {new_dir}")
 
     @log_function
@@ -694,16 +727,10 @@ class GalleryGeneratorApp(QMainWindow):
                     # Update display
                     self.update_selected_dirs_display()
 
-                    # Save configuration
-                    save_config(
-                        self.current_root_dir,
-                        self.cached_root_dirs,
-                        self.selected_slate_dirs,
-                        self.chk_generate_thumbnails.isChecked(),
-                        self.thumbnail_size,
-                        self.chk_lazy_loading.isChecked(),
-                        self.exclude_patterns_pref
-                    )
+                    # Update preferences from UI and save configuration
+                    self.generate_thumbnails_pref = self.chk_generate_thumbnails.isChecked()
+                    self.lazy_loading_pref = self.chk_lazy_loading.isChecked()
+                    self._sync_config_and_save()
 
                     logger.info(f"Selected {len(self.selected_slate_dirs)} directories: {self.selected_slate_dirs}")
                     self.update_status(f"Selected {len(self.selected_slate_dirs)} director{'y' if len(self.selected_slate_dirs) == 1 else 'ies'}")
@@ -726,6 +753,11 @@ class GalleryGeneratorApp(QMainWindow):
     def on_scan(self):
         """Scan selected directories for photo collections."""
         try:
+            # Guard against multiple concurrent scans
+            if self.scan_thread is not None and self.scan_thread.isRunning():
+                logger.warning("Scan already in progress, ignoring request")
+                return
+
             # Get list of checked folders
             if not self.selected_slate_dirs:
                 self.update_status("Please check at least one directory to scan.")
@@ -781,6 +813,10 @@ class GalleryGeneratorApp(QMainWindow):
                 logger.info(f"Loaded slates from cache for {len(self.selected_slate_dirs)} directory(ies)")
                 return
 
+            # Disable scan/refresh buttons during scan
+            self.btn_scan.setEnabled(False)
+            self.btn_refresh.setEnabled(False)
+
             # Start scan thread with selected directories
             self.scan_thread = ScanThread(self.selected_slate_dirs, self.cache_manager, self.exclude_patterns_pref)  # pyright: ignore[reportArgumentType]
             _ = self.scan_thread.scan_complete.connect(self.on_scan_complete)
@@ -798,6 +834,9 @@ class GalleryGeneratorApp(QMainWindow):
         self.progress_bar.setValue(100)
         # Hide progress bar after 2 seconds
         QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))
+        # Re-enable scan/refresh buttons
+        self.btn_scan.setEnabled(True)
+        self.btn_refresh.setEnabled(True)
         logger.info(f"Scan complete: {message}")
 
     def on_scan_progress(self, progress):
@@ -863,7 +902,7 @@ class GalleryGeneratorApp(QMainWindow):
         # Save exclude pattern preference if it changed
         if exclude_pattern != self.exclude_patterns_pref:
             self.exclude_patterns_pref = exclude_pattern
-            save_config(self.current_root_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
+            self._sync_config_and_save()
 
         # Start with all slates
         filtered = self.slates_dict.copy()
@@ -928,6 +967,11 @@ class GalleryGeneratorApp(QMainWindow):
     def on_refresh(self):
         """Re-scan selected directories, clearing cache."""
         try:
+            # Guard against multiple concurrent scans
+            if self.scan_thread is not None and self.scan_thread.isRunning():
+                logger.warning("Scan already in progress, ignoring refresh request")
+                return
+
             if not self.selected_slate_dirs:
                 self.update_status("Please check at least one directory to refresh.")
                 logger.warning("Refresh initiated without selecting any directories.")
@@ -964,6 +1008,10 @@ class GalleryGeneratorApp(QMainWindow):
             self.unique_focal_lengths = set()
             self.list_slates.clear()
 
+            # Disable scan/refresh buttons during scan
+            self.btn_scan.setEnabled(False)
+            self.btn_refresh.setEnabled(False)
+
             # Start scan thread to re-scan and update cache
             self.scan_thread = ScanThread(self.selected_slate_dirs, self.cache_manager, self.exclude_patterns_pref)  # pyright: ignore[reportArgumentType]
             _ = self.scan_thread.scan_complete.connect(self.on_scan_complete)
@@ -976,6 +1024,11 @@ class GalleryGeneratorApp(QMainWindow):
 
     def on_generate(self):
         try:
+            # Guard against multiple concurrent gallery generations
+            if self.gallery_thread is not None and self.gallery_thread.isRunning():
+                logger.warning("Gallery generation already in progress, ignoring request")
+                return
+
             selected_items = self.list_slates.selectedItems()
             if not selected_items:
                 self.update_status("Please select at least one slate.")
@@ -1082,7 +1135,7 @@ class GalleryGeneratorApp(QMainWindow):
         self.generate_thumbnails_pref = self.chk_generate_thumbnails.isChecked()
         # Enable/disable size dropdown based on checkbox state
         self.combo_thumbnail_size.setEnabled(self.generate_thumbnails_pref)
-        save_config(self.current_root_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
+        self._sync_config_and_save()
 
     def on_thumbnail_size_changed(self, text):
         """Save thumbnail size preference when dropdown changes."""
@@ -1092,7 +1145,7 @@ class GalleryGeneratorApp(QMainWindow):
                 size_str = text.split('x')[0].strip()
                 try:
                     self.thumbnail_size = int(size_str)
-                    save_config(self.current_root_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
+                    self._sync_config_and_save()
                     logger.info(f"Thumbnail size changed to: {self.thumbnail_size}")
                 except ValueError:
                     logger.error(f"Invalid thumbnail size format: {text}")
@@ -1102,7 +1155,7 @@ class GalleryGeneratorApp(QMainWindow):
     def on_lazy_loading_pref_changed(self):
         """Save lazy loading preference when checkbox state changes."""
         self.lazy_loading_pref = self.chk_lazy_loading.isChecked()
-        save_config(self.current_root_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
+        self._sync_config_and_save()
         logger.info(f"Lazy loading preference changed to: {self.lazy_loading_pref}")
 
     @override
@@ -1125,7 +1178,7 @@ class GalleryGeneratorApp(QMainWindow):
             logger.info("Cache manager shutdown successfully.")
 
             # Save configuration
-            save_config(self.current_root_dir, self.cached_root_dirs, self.selected_slate_dirs, self.generate_thumbnails_pref, self.thumbnail_size, self.lazy_loading_pref, self.exclude_patterns_pref)
+            self._sync_config_and_save()
 
             event.accept()
             logger.info("Application closed.")

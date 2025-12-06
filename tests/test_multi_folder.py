@@ -9,7 +9,7 @@ import pytest
 from PIL import Image
 
 from src.core.cache_manager import ImprovedCacheManager
-from src.core.config_manager import load_config, save_config
+from src.core.config_manager import GalleryConfig, load_config, save_config
 from src.core.image_processor import scan_multiple_directories
 from src.utils.threading import ScanThread, _scan_single_root_dir
 
@@ -51,19 +51,19 @@ class TestMultiFolderConfig:
         selected_dirs = [str(tmp_path / "dir1")]
 
         # Save config with selected directories
-        save_config(
-            current_dir,
-            slate_dirs,
-            selected_dirs,
+        save_config(GalleryConfig(
+            current_slate_dir=current_dir,
+            slate_dirs=slate_dirs,
+            selected_slate_dirs=selected_dirs,
             generate_thumbnails=False,
             thumbnail_size=600,
             lazy_loading=True,
             exclude_patterns=""
-        )
+        ))
 
         # Load and verify
         loaded = load_config()
-        assert loaded[2] == selected_dirs  # selected_slate_dirs is 3rd element
+        assert loaded.selected_slate_dirs == selected_dirs
 
     def test_backwards_compatibility_no_selected_dirs(self, tmp_path):
         """Test that missing selected_slate_dirs defaults to current_slate_dir."""
@@ -71,15 +71,15 @@ class TestMultiFolderConfig:
         os.makedirs(current_dir, exist_ok=True)
 
         # Save config without selected_slate_dirs (simulate old config)
-        save_config(
-            current_dir,
-            [current_dir],
-            [],  # Empty selected_slate_dirs
+        save_config(GalleryConfig(
+            current_slate_dir=current_dir,
+            slate_dirs=[current_dir],
+            selected_slate_dirs=[],  # Empty selected_slate_dirs
             generate_thumbnails=False,
             thumbnail_size=600,
             lazy_loading=True,
             exclude_patterns=""
-        )
+        ))
 
         # Manually edit config to remove selected_slate_dirs
         import configparser
@@ -93,7 +93,7 @@ class TestMultiFolderConfig:
 
         # Load should default to current_slate_dir
         loaded = load_config()
-        assert current_dir in loaded[2]  # Should include current_slate_dir
+        assert current_dir in loaded.selected_slate_dirs  # Should include current_slate_dir
 
     def test_multiple_selected_directories(self, tmp_path):
         """Test saving and loading multiple selected directories."""
@@ -105,22 +105,22 @@ class TestMultiFolderConfig:
         slate_dirs = [dir1, dir2, dir3]
         selected_dirs = [dir1, dir3]  # Select 1st and 3rd
 
-        save_config(
-            current_dir,
-            slate_dirs,
-            selected_dirs,
+        save_config(GalleryConfig(
+            current_slate_dir=current_dir,
+            slate_dirs=slate_dirs,
+            selected_slate_dirs=selected_dirs,
             generate_thumbnails=True,
             thumbnail_size=800,
             lazy_loading=False,
             exclude_patterns="*.tmp,test*"
-        )
+        ))
 
         loaded = load_config()
-        assert loaded[2] == selected_dirs
-        assert loaded[3] is True  # generate_thumbnails
-        assert loaded[4] == 800  # thumbnail_size
-        assert loaded[5] is False  # lazy_loading
-        assert loaded[6] == "*.tmp,test*"  # exclude_patterns
+        assert loaded.selected_slate_dirs == selected_dirs
+        assert loaded.generate_thumbnails is True
+        assert loaded.thumbnail_size == 800
+        assert loaded.lazy_loading is False
+        assert loaded.exclude_patterns == "*.tmp,test*"
 
 
 class TestScanMultipleDirectories:
@@ -445,19 +445,19 @@ class TestMultiFolderIntegration:
 
         # Step 2: Save config with selected directories
         selected_dirs = [str(root1), str(root2)]
-        save_config(
-            str(root1),  # current_slate_dir
-            selected_dirs,  # slate_dirs (cached)
-            selected_dirs,  # selected_slate_dirs
+        save_config(GalleryConfig(
+            current_slate_dir=str(root1),
+            slate_dirs=selected_dirs,  # slate_dirs (cached)
+            selected_slate_dirs=selected_dirs,
             generate_thumbnails=False,
             thumbnail_size=600,
             lazy_loading=True,
             exclude_patterns=""
-        )
+        ))
 
         # Step 3: Load config and verify
         loaded = load_config()
-        assert loaded[2] == selected_dirs
+        assert loaded.selected_slate_dirs == selected_dirs
 
         # Step 4: Scan directories
         slates = scan_multiple_directories(selected_dirs)

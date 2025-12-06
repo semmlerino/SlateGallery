@@ -8,7 +8,7 @@ import pytest
 from PIL import Image
 
 from src.core.cache_manager import ImprovedCacheManager
-from src.core.config_manager import load_config, save_config
+from src.core.config_manager import GalleryConfig, load_config, save_config
 from src.core.gallery_generator import generate_html_gallery
 from src.core.image_processor import (
     get_exif_data,
@@ -186,15 +186,23 @@ class TestSlateGalleryIntegration:
             # Patch the config file location
             m.setattr('src.core.config_manager.CONFIG_FILE', str(config_file))
 
-            # Test save config (now with 7 parameters)
+            # Test save config with GalleryConfig dataclass
             slate_dirs = [images_dir, str(base_path / 'other')]
-            save_config(images_dir, slate_dirs, slate_dirs, False, 600, True, "")
+            save_config(GalleryConfig(
+                current_slate_dir=images_dir,
+                slate_dirs=slate_dirs,
+                selected_slate_dirs=slate_dirs,
+                generate_thumbnails=False,
+                thumbnail_size=600,
+                lazy_loading=True,
+                exclude_patterns=""
+            ))
 
-            # Test load config (now returns 7 values)
-            current_dir, loaded_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns = load_config()
+            # Test load config (returns GalleryConfig dataclass)
+            config = load_config()
 
-            assert current_dir == images_dir
-            assert loaded_dirs == slate_dirs
+            assert config.current_slate_dir == images_dir
+            assert config.slate_dirs == slate_dirs
 
             # Verify config file exists
             assert config_file.exists()

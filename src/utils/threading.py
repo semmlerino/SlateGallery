@@ -98,11 +98,11 @@ class ScanThread(QtCore.QThread):
             self.root_dirs = [str(d) for d in root_dirs]
         self.cache_manager: CacheManagerProtocol = cache_manager
         self.exclude_patterns: str = exclude_patterns
-        self._is_running: bool = True
+        self._stop_event: threading.Event = threading.Event()
 
     def stop(self) -> None:
         """Gracefully stop the thread."""
-        self._is_running = False
+        self._stop_event.set()
         _ = self.wait(5000)  # Wait max 5 seconds for thread to finish
 
     @log_function
@@ -140,7 +140,7 @@ class ScanThread(QtCore.QThread):
 
                     # Process results as they complete
                     for future in as_completed(future_to_dir):
-                        if not self._is_running:
+                        if self._stop_event.is_set():
                             logger.info("Scan thread stopped by user request")
                             executor.shutdown(wait=False, cancel_futures=True)
                             self.scan_complete.emit({}, "Scan cancelled.")
@@ -178,7 +178,7 @@ class ScanThread(QtCore.QThread):
 
             for _slate, data in slates.items():
                 # Check if we should stop
-                if not self._is_running:
+                if self._stop_event.is_set():
                     logger.info("Scan thread stopped by user request")
                     self.scan_complete.emit({}, "Scan cancelled.")
                     return
@@ -251,7 +251,7 @@ class GenerateGalleryThread(QtCore.QThread):
         self.generate_thumbnails: bool = generate_thumbnails
         self.thumbnail_size: int = thumbnail_size
         self.lazy_loading: bool = lazy_loading
-        self._is_running: bool = True
+        self._stop_event: threading.Event = threading.Event()
 
         # Lock for thread-safe operations
         self.focal_length_lock: threading.Lock = threading.Lock()
@@ -275,7 +275,7 @@ class GenerateGalleryThread(QtCore.QThread):
 
     def stop(self) -> None:
         """Gracefully stop the thread."""
-        self._is_running = False
+        self._stop_event.set()
         _ = self.wait(5000)  # Wait max 5 seconds for thread to finish
 
     @override
@@ -291,7 +291,7 @@ class GenerateGalleryThread(QtCore.QThread):
 
             for slate in self.selected_slates:
                 # Check if we should stop
-                if not self._is_running:
+                if self._stop_event.is_set():
                     logger.info("Gallery generation thread stopped by user request")
                     self.gallery_complete.emit(False, "Gallery generation cancelled.")
                     return
@@ -482,7 +482,12 @@ class GenerateGalleryThread(QtCore.QThread):
             thumbnails: dict[str, str] = {}
             thumbnail_path: str = image_path  # Default to original
             if self.generate_thumbnails:
-                thumbnails = generate_thumbnail(image_path, self.thumb_dir, size=self.thumbnail_size)
+                # Pass EXIF orientation to avoid redundant file read
+                exif_orientation = exif.get("Orientation")
+                exif_orientation_int = int(exif_orientation) if exif_orientation is not None else None
+                thumbnails = generate_thumbnail(
+                    image_path, self.thumb_dir, size=self.thumbnail_size, orientation=exif_orientation_int
+                )
                 logger.debug(f"Generated {len(thumbnails)} thumbnails for {filename}")
                 # Get the single thumbnail path
                 size_key: str = f"{self.thumbnail_size}x{self.thumbnail_size}"
