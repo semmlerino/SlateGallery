@@ -60,10 +60,14 @@ def thread_cleanup(qtbot):  # type: ignore[no-untyped-def]
     # Cleanup all registered threads (reverse order for safety)
     for thread in reversed(threads):
         if thread.isRunning():
-            thread.quit()
-            if not thread.wait(1000):  # 1 second timeout
-                thread.terminate()
-                thread.wait()
+            # Use production's graceful stop() if available
+            if hasattr(thread, 'stop'):
+                thread.stop()
+            else:
+                thread.quit()
+                if not thread.wait(5000):
+                    thread.terminate()
+                    thread.wait()
 
     # Process pending Qt events to ensure clean state
     from PySide6.QtCore import QCoreApplication

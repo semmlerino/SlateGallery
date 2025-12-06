@@ -27,12 +27,15 @@ class TestScanThreadErrors:
         threads = []
         yield threads
 
-        # Proper cleanup to avoid "destroyed while running" warnings
+        # Proper cleanup using production's stop() method
         for thread in threads:
             if thread.isRunning():
-                thread.requestInterruption()
-                thread.quit()
-                thread.wait(1000)
+                if hasattr(thread, 'stop'):
+                    thread.stop()
+                else:
+                    thread.requestInterruption()
+                    thread.quit()
+                    thread.wait(5000)
 
     @pytest.fixture
     def mock_cache_manager(self):
@@ -174,11 +177,15 @@ class TestGenerateGalleryThreadErrors:
         threads = []
         yield threads
 
+        # Proper cleanup using production's stop() method
         for thread in threads:
             if thread.isRunning():
-                thread.requestInterruption()
-                thread.quit()
-                thread.wait(1000)
+                if hasattr(thread, 'stop'):
+                    thread.stop()
+                else:
+                    thread.requestInterruption()
+                    thread.quit()
+                    thread.wait(5000)
 
     def test_missing_template_file(self, qtbot, cleanup_threads, tmp_path):
         """Test GenerateGalleryThread handles missing template
@@ -276,27 +283,30 @@ class TestConcurrency:
         Real-world scenario: Multiple threads scanning different directories,
         all writing to the same cache manager
         """
-        import threading
         from concurrent.futures import ThreadPoolExecutor
 
         cache = ImprovedCacheManager(str(tmp_path))
-        lock = threading.Lock()
+        errors: list[tuple[str, str]] = []
 
-        def write_metadata(slate_name):
-            """Simulate concurrent cache writes"""
-            slates_data = {
-                slate_name: {
-                    'images': [f'image_{slate_name}.jpg'],
-                    'timestamp': f'time_{slate_name}'
+        def write_and_read(slate_name):
+            """Simulate concurrent cache writes and reads"""
+            try:
+                slates_data = {
+                    slate_name: {
+                        'images': [f'image_{slate_name}.jpg'],
+                        'timestamp': f'time_{slate_name}'
+                    }
                 }
-            }
-            with lock:
                 cache.save_cache(str(tmp_path), slates_data)
+                # Verify we can read back
+                _ = cache.load_cache(str(tmp_path))
+            except Exception as e:
+                errors.append((slate_name, str(e)))
 
-        # Act - Concurrent writes from multiple threads
+        # Act - Concurrent writes from multiple threads (no external lock)
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = [
-                executor.submit(write_metadata, f'Slate{i:02d}')
+                executor.submit(write_and_read, f'Slate{i:02d}')
                 for i in range(50)
             ]
 
@@ -304,7 +314,10 @@ class TestConcurrency:
             for f in futures:
                 f.result()
 
-        # Assert - Cache should be intact and readable
+        # Assert no errors during concurrent access
+        assert len(errors) == 0, f"Concurrent access errors: {errors}"
+
+        # Cache should be intact and readable
         cache_data = cache.load_cache(str(tmp_path))
         assert cache_data is None or isinstance(cache_data, dict)
 

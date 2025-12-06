@@ -42,25 +42,6 @@ class TestScanThreadImproved:
     """Test ScanThread with real cache manager and images."""
 
     @pytest.fixture
-    def thread_cleanup(self, qtbot):
-        """Ensure proper thread cleanup after each test."""
-        threads = []
-
-        def register(thread):
-            threads.append(thread)
-            return thread
-
-        yield register
-
-        # Cleanup all registered threads
-        for thread in threads:
-            if thread.isRunning():
-                thread.quit()
-                if not thread.wait(1000):
-                    thread.terminate()
-                    thread.wait()
-
-    @pytest.fixture
     def real_test_environment(self):
         """Create a real test environment with images and cache."""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -183,25 +164,6 @@ class TestScanThreadImproved:
 
 class TestGenerateGalleryThreadImproved:
     """Test GenerateGalleryThread with real components."""
-
-    @pytest.fixture
-    def thread_cleanup(self, qtbot):
-        """Ensure proper thread cleanup after each test."""
-        threads = []
-
-        def register(thread):
-            threads.append(thread)
-            return thread
-
-        yield register
-
-        # Cleanup all registered threads
-        for thread in threads:
-            if thread.isRunning():
-                thread.quit()
-                if not thread.wait(1000):
-                    thread.terminate()
-                    thread.wait()
 
     @pytest.fixture
     def gallery_test_environment(self):
@@ -354,7 +316,7 @@ class TestGenerateGalleryThreadImproved:
         # Thread cleanup handled by fixture
 
     def test_gallery_thread_error_recovery(self, gallery_test_environment, qtbot, thread_cleanup):
-        """Test that gallery thread handles errors gracefully."""
+        """Test that gallery thread handles missing template gracefully."""
         # Use non-existent template to trigger error
         thread = thread_cleanup(GenerateGalleryThread(
             selected_slates=['vacation'],
@@ -367,33 +329,16 @@ class TestGenerateGalleryThreadImproved:
             thumbnail_size=600
         ))
 
-        # Use QSignalSpy to monitor the signal (Best Practice)
-        from PySide6.QtTest import QSignalSpy
-        complete_spy = QSignalSpy(thread.gallery_complete)
+        with qtbot.waitSignal(thread.gallery_complete, timeout=5000) as blocker:
+            thread.start()
 
-        # Start thread
-        thread.start()
+        success, message = blocker.args
 
-        # Wait for completion
-        qtbot.waitUntil(lambda: not thread.isRunning(), timeout=5000)
-
-        # Check signal was emitted - use count() instead of len()
-        assert complete_spy.count() >= 1
-
-        # Get the last signal (most recent/final state)
-        signal_args = complete_spy.at(complete_spy.count() - 1)
-        success = signal_args[0]
-        message = signal_args[1]
-
-        # The actual behavior: template error results in failure
-        # Check if this is a template error (should fail) or processed anyway
-        if "error" in message.lower() or "failed" in message.lower():
-            assert success is False
-        else:
-            # If it somehow succeeded, that's also acceptable
-            assert success is True
-
-        # Thread cleanup handled by fixture
+        # Missing template should fail gracefully
+        assert success is False, "Missing template should result in failure"
+        assert "error" in message.lower() or "failed" in message.lower(), (
+            f"Error message should indicate failure, got: {message}"
+        )
 
     def test_parallel_processing_without_thumbnails(self, gallery_test_environment, qtbot, thread_cleanup):
         """Test that parallel processing is used even without thumbnails."""
@@ -511,25 +456,6 @@ class TestGenerateGalleryThreadImproved:
 
 class TestThreadingIntegrationImproved:
     """Integration tests with real components."""
-
-    @pytest.fixture
-    def thread_cleanup(self, qtbot):
-        """Ensure proper thread cleanup after each test."""
-        threads = []
-
-        def register(thread):
-            threads.append(thread)
-            return thread
-
-        yield register
-
-        # Cleanup all registered threads
-        for thread in threads:
-            if thread.isRunning():
-                thread.quit()
-                if not thread.wait(1000):
-                    thread.terminate()
-                    thread.wait()
 
     def test_full_scan_and_generate_workflow(self, qtbot, thread_cleanup):
         """Test complete workflow with real components."""
