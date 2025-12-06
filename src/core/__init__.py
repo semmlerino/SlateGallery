@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Union
 
 from .cache_manager import ImprovedCacheManager
+from .config_manager import GalleryConfig
 from .config_manager import load_config as _load_config
 from .config_manager import save_config as _save_config
 from .gallery_generator import DateData, FocalLengthData, ImageData, SlateData
@@ -20,7 +21,16 @@ def load_config() -> tuple[str, list[str], list[str], bool, int, bool, str]:
     Returns:
         Tuple of (current_slate_dir, slate_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns)
     """
-    return _load_config()
+    cfg = _load_config()
+    return (
+        cfg.current_slate_dir,
+        cfg.slate_dirs,
+        cfg.selected_slate_dirs,
+        cfg.generate_thumbnails,
+        cfg.thumbnail_size,
+        cfg.lazy_loading,
+        cfg.exclude_patterns,
+    )
 
 
 def save_config(
@@ -43,7 +53,16 @@ def save_config(
         lazy_loading: Whether to enable lazy loading in gallery
         exclude_patterns: Patterns to exclude from slate list (comma-separated wildcards)
     """
-    _save_config(current_slate_dir, slate_dirs, selected_slate_dirs, generate_thumbnails, thumbnail_size, lazy_loading, exclude_patterns)
+    cfg = GalleryConfig(
+        current_slate_dir=current_slate_dir,
+        slate_dirs=slate_dirs,
+        selected_slate_dirs=selected_slate_dirs,
+        generate_thumbnails=generate_thumbnails,
+        thumbnail_size=thumbnail_size,
+        lazy_loading=lazy_loading,
+        exclude_patterns=exclude_patterns,
+    )
+    _save_config(cfg)
 
 
 def generate_html_gallery(

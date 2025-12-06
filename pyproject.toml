@@ -48,6 +48,8 @@ reportExplicitAny = "warning"
 reportAny = "warning"
 # PIL's _getexif() is a deprecated untyped method - suppress for pragmatic compatibility
 reportAttributeAccessIssue = "warning"
+# Qt widgets initialized in setup methods called from __init__ - common pattern
+reportUninitializedInstanceVariable = "warning"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

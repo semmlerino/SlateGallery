@@ -33,6 +33,9 @@ class CacheManagerProtocol(Protocol):
     def save_cache(self, root_dir: str, slates: object) -> None:
         ...
 
+    def save_composite_cache(self, root_dirs: list[str], slates: object) -> None:
+        ...
+
 # ----------------------------- Worker Threads -----------------------------
 
 
@@ -484,7 +487,12 @@ class GenerateGalleryThread(QtCore.QThread):
             if self.generate_thumbnails:
                 # Pass EXIF orientation to avoid redundant file read
                 exif_orientation = exif.get("Orientation")
-                exif_orientation_int = int(exif_orientation) if exif_orientation is not None else None
+                exif_orientation_int: Optional[int] = None
+                if exif_orientation is not None:
+                    try:
+                        exif_orientation_int = int(str(exif_orientation))
+                    except (ValueError, TypeError):
+                        pass
                 thumbnails = generate_thumbnail(
                     image_path, self.thumb_dir, size=self.thumbnail_size, orientation=exif_orientation_int
                 )

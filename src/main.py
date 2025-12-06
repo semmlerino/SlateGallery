@@ -164,7 +164,23 @@ class CardWidget(QWidget):
 
 
 class GalleryGeneratorApp(QMainWindow):
-    def __init__(self, parent=None):
+    # UI widget type annotations (initialized in _create_* methods)
+    selected_dirs_display: QtWidgets.QPlainTextEdit
+    btn_scan: QPushButton
+    lbl_filter_count: QLabel
+    txt_filter: QLineEdit
+    txt_exclude: QLineEdit
+    list_slates: QListWidget
+    btn_refresh: QPushButton
+    chk_generate_thumbnails: QCheckBox
+    combo_thumbnail_size: QComboBox
+    chk_lazy_loading: QCheckBox
+    btn_generate: QPushButton
+    btn_open_gallery: QPushButton
+    lbl_status: QLabel
+    progress_bar: QProgressBar
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Slate Photography Gallery Generator")
         self.setGeometry(100, 100, 900, 700)
