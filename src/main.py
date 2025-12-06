@@ -854,8 +854,9 @@ class GalleryGeneratorApp(QMainWindow):
 
             # Start scan thread with selected directories
             self.scan_thread = ScanThread(self.selected_slate_dirs, self.cache_manager, self.exclude_patterns_pref)  # pyright: ignore[reportArgumentType]
-            _ = self.scan_thread.scan_complete.connect(self.on_scan_complete)
-            _ = self.scan_thread.progress.connect(self.on_scan_progress)
+            # Use QueuedConnection for thread-to-main-thread signals to prevent race conditions
+            _ = self.scan_thread.scan_complete.connect(self.on_scan_complete, Qt.ConnectionType.QueuedConnection)
+            _ = self.scan_thread.progress.connect(self.on_scan_progress, Qt.ConnectionType.QueuedConnection)
             self.scan_thread.start()
             logger.debug(f"Scan thread started for {len(self.selected_slate_dirs)} directories")
         except Exception as e:
@@ -1050,8 +1051,9 @@ class GalleryGeneratorApp(QMainWindow):
 
             # Start scan thread to re-scan and update cache
             self.scan_thread = ScanThread(self.selected_slate_dirs, self.cache_manager, self.exclude_patterns_pref)  # pyright: ignore[reportArgumentType]
-            _ = self.scan_thread.scan_complete.connect(self.on_scan_complete)
-            _ = self.scan_thread.progress.connect(self.on_scan_progress)
+            # Use QueuedConnection for thread-to-main-thread signals to prevent race conditions
+            _ = self.scan_thread.scan_complete.connect(self.on_scan_complete, Qt.ConnectionType.QueuedConnection)
+            _ = self.scan_thread.progress.connect(self.on_scan_progress, Qt.ConnectionType.QueuedConnection)
             self.scan_thread.start()
             logger.debug(f"Refresh scan thread started for {len(self.selected_slate_dirs)} directories")
         except Exception as e:
@@ -1119,8 +1121,9 @@ class GalleryGeneratorApp(QMainWindow):
                 thumbnail_size=self.thumbnail_size,
                 lazy_loading=self.chk_lazy_loading.isChecked()
             )
-            _ = self.gallery_thread.gallery_complete.connect(self.on_gallery_complete)
-            _ = self.gallery_thread.progress.connect(self.on_gallery_progress)
+            # Use QueuedConnection for thread-to-main-thread signals to prevent race conditions
+            _ = self.gallery_thread.gallery_complete.connect(self.on_gallery_complete, Qt.ConnectionType.QueuedConnection)
+            _ = self.gallery_thread.progress.connect(self.on_gallery_progress, Qt.ConnectionType.QueuedConnection)
             self.gallery_thread.start()
             logger.debug("Gallery generation thread started.")
         except Exception as e:
