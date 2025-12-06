@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QProgressBar,
@@ -968,9 +969,16 @@ class GalleryGeneratorApp(QMainWindow):
 
     @log_function
     def populate_slates_list(self) -> None:
+        # Save currently selected slate names before clearing
+        selected_names: set[str] = {item.text() for item in self.list_slates.selectedItems()}
+
         self.list_slates.clear()
         for slate in sorted(self.filtered_slates.keys()):
-            self.list_slates.addItem(slate)
+            item = QListWidgetItem(slate)
+            self.list_slates.addItem(item)
+            # Restore selection if this slate was previously selected
+            if slate in selected_names:
+                item.setSelected(True)
 
         # Update filter count label
         filtered_count = len(self.filtered_slates)
