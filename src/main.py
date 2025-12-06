@@ -819,17 +819,36 @@ class GalleryGeneratorApp(QMainWindow):
                 cache_valid = self.cache_manager.validate_composite_cache(self.selected_slate_dirs) if cached_slates else False
 
             if cached_slates:
-                self.slates_dict = cached_slates
-                self.apply_filters()
-                # Check if cache is still valid
                 if cache_valid:
+                    # Cache is valid - use it directly
+                    self.slates_dict = cached_slates
+                    self.apply_filters()
                     self.update_status("Loaded slates from cache.")
+                    self.progress_bar.setValue(100)  # type: ignore[union-attr]
+                    QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))  # type: ignore[union-attr]
+                    logger.info(f"Loaded slates from cache for {len(self.selected_slate_dirs)} directory(ies)")
+                    return
                 else:
-                    self.update_status("Loaded from cache (may be outdated - click Scan again to refresh)")
-                self.progress_bar.setValue(100)  # type: ignore[union-attr]
-                QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))  # type: ignore[union-attr]
-                logger.info(f"Loaded slates from cache for {len(self.selected_slate_dirs)} directory(ies)")
-                return
+                    # Cache exists but is outdated - ask user before using stale data
+                    reply = QMessageBox.question(
+                        self,
+                        "Cache Outdated",
+                        "The cached data may be outdated. Use cached data anyway?\n\n"
+                        "Click 'Yes' to use cache (faster)\n"
+                        "Click 'No' to re-scan directories (accurate)",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.No  # Default to re-scan for safety
+                    )
+                    if reply == QMessageBox.StandardButton.Yes:
+                        self.slates_dict = cached_slates
+                        self.apply_filters()
+                        self.update_status("Using outdated cache (re-scan recommended)")
+                        self.progress_bar.setValue(100)  # type: ignore[union-attr]
+                        QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))  # type: ignore[union-attr]
+                        logger.info(f"User chose to use outdated cache for {len(self.selected_slate_dirs)} directory(ies)")
+                        return
+                    # User chose No - fall through to perform fresh scan
+                    logger.info("User chose to re-scan instead of using outdated cache")
 
             # Disable scan/refresh buttons during scan
             self.btn_scan.setEnabled(False)

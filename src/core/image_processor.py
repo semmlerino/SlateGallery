@@ -343,6 +343,7 @@ def generate_thumbnail(
                     optimize=False,  # Skip for speed
                     subsampling=1    # Balanced quality/speed
                 )
+                thumb.close()  # Explicitly release resources to prevent memory pressure
                 thumbnails[size_str] = thumb_path
                 logger.debug(f"Generated thumbnail: {thumb_path}")
 

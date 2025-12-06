@@ -292,7 +292,8 @@ class GenerateGalleryThread(QtCore.QThread):
         self.max_workers: int = min(multiprocessing.cpu_count() * 2, 16)
         logger.info(f"Using {self.max_workers} workers for parallel image processing")
 
-        # Track skipped images for user feedback
+        # Track skipped images for user feedback (thread-safe)
+        self.skipped_lock: threading.Lock = threading.Lock()
         self.skipped_images: int = 0
 
     def stop(self) -> None:
@@ -442,6 +443,12 @@ class GenerateGalleryThread(QtCore.QThread):
 
             # Collect results as they complete
             for future in as_completed(future_to_image):
+                # Check for stop request before processing each result
+                if self._stop_event.is_set():
+                    logger.info("Stop requested during parallel image processing")
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    break  # Return partial results
+
                 try:
                     image_data: Optional[ImageData] = future.result()
                     if image_data is not None:
@@ -449,7 +456,8 @@ class GenerateGalleryThread(QtCore.QThread):
                 except Exception as e:
                     image_path: str = future_to_image[future]
                     logger.error(f"Error processing image {image_path} in parallel: {e}")
-                    self.skipped_images += 1
+                    with self.skipped_lock:
+                        self.skipped_images += 1
 
         # Sort results to maintain original order
         results.sort(key=lambda x: str(x.get("filename", "")))
