@@ -188,6 +188,14 @@ class ImprovedCacheManager:
                     logger.info(f"Directory {root_dir} modified since cache")
                     return False
 
+            # Check file count hasn't changed (detects additions/deletions in subdirs)
+            file_count_obj = metadata.get("file_count")
+            if isinstance(file_count_obj, int):
+                current_count = self._count_image_files_multi(root_dirs)
+                if current_count != file_count_obj:
+                    logger.info(f"Composite cache is stale (file count changed: {file_count_obj} -> {current_count})")
+                    return False
+
             return True
         except Exception as e:
             logger.error(f"Error validating composite cache: {e}", exc_info=True)
@@ -254,6 +262,14 @@ class ImprovedCacheManager:
             if current_mtime > cached_mtime:
                 logger.info(f"Cache for {root_dir} is stale (dir modified since scan)")
                 return False
+
+            # Check file count hasn't changed (detects additions/deletions in subdirs)
+            file_count_obj = metadata.get("file_count")
+            if isinstance(file_count_obj, int):
+                current_count = self._count_image_files(root_dir)
+                if current_count != file_count_obj:
+                    logger.info(f"Cache for {root_dir} is stale (file count changed: {file_count_obj} -> {current_count})")
+                    return False
 
             return True
         except Exception as e:
@@ -528,6 +544,45 @@ class ImprovedCacheManager:
             return 1  # Default to V1 for legacy
         except Exception:
             return 0
+
+    def _count_image_files(self, root_dir: str) -> int:
+        """Quick count of image files for cache validation.
+
+        Walks the directory tree and counts image files, skipping dot directories
+        and macOS resource fork files.
+
+        Args:
+            root_dir: Root directory to scan
+
+        Returns:
+            Total count of image files
+        """
+        image_extensions = {".jpg", ".jpeg", ".png", ".tiff", ".bmp", ".gif"}
+        count = 0
+        try:
+            for _dirpath, dirnames, filenames in os.walk(root_dir, followlinks=False):
+                # Skip dot directories (modifying in-place prevents descent)
+                dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+                for f in filenames:
+                    # Skip macOS resource fork files
+                    if f.startswith("._"):
+                        continue
+                    if os.path.splitext(f)[1].lower() in image_extensions:
+                        count += 1
+        except OSError as e:
+            logger.warning(f"Error counting files in {root_dir}: {e}")
+        return count
+
+    def _count_image_files_multi(self, root_dirs: list[str]) -> int:
+        """Count image files across multiple directories.
+
+        Args:
+            root_dirs: List of root directories to scan
+
+        Returns:
+            Total count of image files across all directories
+        """
+        return sum(self._count_image_files(d) for d in root_dirs)
 
     @log_function
     def shutdown(self) -> None:

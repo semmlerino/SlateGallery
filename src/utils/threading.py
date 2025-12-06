@@ -113,9 +113,15 @@ class ScanThread(QtCore.QThread):
         self._stop_event: threading.Event = threading.Event()
 
     def stop(self) -> None:
-        """Gracefully stop the thread."""
+        """Gracefully stop the thread.
+
+        Note: For multi-directory scans using ProcessPoolExecutor, already-running
+        subprocess tasks may continue briefly after stop is called. The stop event
+        prevents new work from starting and ensures clean thread termination.
+        """
         self._stop_event.set()
-        _ = self.wait(5000)  # Wait max 5 seconds for thread to finish
+        if not self.wait(5000):  # Wait max 5 seconds for thread to finish
+            logger.warning("ScanThread did not stop within timeout; some background processes may still be running")
 
     @log_function
     @override
@@ -154,6 +160,10 @@ class ScanThread(QtCore.QThread):
                     for future in as_completed(future_to_dir):
                         if self._stop_event.is_set():
                             logger.info("Scan thread stopped by user request")
+                            # Cancel any pending futures (works on Python 3.9+, ignored on older)
+                            for pending_future in future_to_dir:
+                                pending_future.cancel()
+                            # Shutdown executor without waiting for running tasks
                             executor.shutdown(wait=False, cancel_futures=True)
                             self.scan_complete.emit({}, "Scan cancelled.")
                             return
@@ -286,9 +296,15 @@ class GenerateGalleryThread(QtCore.QThread):
         self.skipped_images: int = 0
 
     def stop(self) -> None:
-        """Gracefully stop the thread."""
+        """Gracefully stop the thread.
+
+        Note: Image processing tasks in the ThreadPoolExecutor may continue briefly
+        after stop is called. The stop event prevents new slates from being processed
+        and ensures clean thread termination.
+        """
         self._stop_event.set()
-        _ = self.wait(5000)  # Wait max 5 seconds for thread to finish
+        if not self.wait(5000):  # Wait max 5 seconds for thread to finish
+            logger.warning("GenerateGalleryThread did not stop within timeout; some image processing may still be running")
 
     @override
     def run(self) -> None:

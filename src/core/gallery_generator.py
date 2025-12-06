@@ -91,8 +91,9 @@ def generate_html_gallery(
         else:
             real_allowed_roots = [os.path.realpath(d) for d in allowed_root_dirs]
 
-        # Process image paths
+        # Process image paths and filter out invalid images
         for slate in gallery_data:
+            valid_images: list[ImageData] = []
             for image in slate["images"]:
                 original_path = image["original_path"]
                 try:
@@ -107,18 +108,22 @@ def generate_html_gallery(
                         logger.error(f"Image path {original_path} is outside of allowed directories: {allowed_dirs_str}")
                         status_callback(f"Skipping image outside of allowed directories: {original_path}")
                         skipped_count += 1
-                        continue
+                        continue  # Don't add to valid_images
 
                     # Use absolute path with forward slashes for web
                     absolute_path = os.path.abspath(original_path)
                     web_path = "file://" + absolute_path.replace("\\", "/")
                     image["web_path"] = web_path
+                    valid_images.append(image)
 
                 except Exception as e:
                     logger.error(f"Error processing image {original_path}: {e}", exc_info=True)
                     status_callback(f"Error processing image {original_path}: {e}")
                     skipped_count += 1
-                    continue
+                    continue  # Don't add to valid_images
+
+            # Replace with filtered list (actually removes skipped images)
+            slate["images"] = valid_images
 
         # Load and render template
         env = Environment(loader=FileSystemLoader(os.path.dirname(template_path)), autoescape=True)

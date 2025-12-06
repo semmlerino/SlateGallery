@@ -122,16 +122,17 @@ def get_orientation(image_path: str, exif_data: dict[str, object]) -> str:
     return _get_orientation(image_path, exif_data)
 
 
-def scan_directories(root_dir: str) -> dict[str, dict[str, list[str]]]:
+def scan_directories(root_dir: str, exclude_patterns: str = "") -> dict[str, dict[str, list[str]]]:
     """Scan directory tree for image files.
 
     Args:
         root_dir: Root directory to scan
+        exclude_patterns: Comma/semicolon-separated exclusion patterns (e.g., "*hdri*, *test*")
 
     Returns:
         Dictionary mapping slate names to image lists
     """
-    return _scan_directories(root_dir)
+    return _scan_directories(root_dir, exclude_patterns)
 
 
 __all__ = [
