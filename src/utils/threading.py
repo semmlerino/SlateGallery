@@ -36,6 +36,7 @@ class CacheManagerProtocol(Protocol):
         image_paths: Sequence[str],
         existing_cache: Optional[dict[str, dict[str, object]]] = None,
         _callback: Optional[Callable[[int], None]] = None,
+        stop_event: Optional[threading.Event] = None,
     ) -> list[dict[str, object]]:
         ...
 
@@ -112,14 +113,22 @@ class ScanThread(QtCore.QThread):
         self.exclude_patterns: str = exclude_patterns
         self._stop_event: threading.Event = threading.Event()
 
-    def stop(self) -> None:
-        """Gracefully stop the thread.
+    def signal_stop(self) -> None:
+        """Signal the thread to stop without waiting.
 
-        Note: For multi-directory scans using ProcessPoolExecutor, already-running
-        subprocess tasks may continue briefly after stop is called. The stop event
-        prevents new work from starting and ensures clean thread termination.
+        This is useful when you want to stop multiple threads in parallel.
+        Call this method on all threads first, then call wait() on each.
         """
         self._stop_event.set()
+
+    def stop(self) -> None:
+        """Gracefully stop the thread and wait for completion.
+
+        Note: For multi-directory scans using ThreadPoolExecutor, already-running
+        thread tasks may continue briefly after stop is called. The stop event
+        prevents new work from starting and ensures clean thread termination.
+        """
+        self.signal_stop()
         if not self.wait(5000):  # Wait max 5 seconds for thread to finish
             logger.warning("ScanThread did not stop within timeout; some background processes may still be running")
 
@@ -208,6 +217,7 @@ class ScanThread(QtCore.QThread):
                     [str(p) for p in image_paths],
                     existing_cache=None,  # Fresh scan, no existing cache
                     _callback=lambda p: self.progress.emit(50 + int(p / 2)),  # Second 50% is EXIF processing
+                    stop_event=self._stop_event,
                 )
                 data["images"] = processed_images  # pyright: ignore[reportArgumentType]
 
@@ -296,14 +306,22 @@ class GenerateGalleryThread(QtCore.QThread):
         self.skipped_lock: threading.Lock = threading.Lock()
         self.skipped_images: int = 0
 
+    def signal_stop(self) -> None:
+        """Signal the thread to stop without waiting.
+
+        This is useful when you want to stop multiple threads in parallel.
+        Call this method on all threads first, then call wait() on each.
+        """
+        self._stop_event.set()
+
     def stop(self) -> None:
-        """Gracefully stop the thread.
+        """Gracefully stop the thread and wait for completion.
 
         Note: Image processing tasks in the ThreadPoolExecutor may continue briefly
         after stop is called. The stop event prevents new slates from being processed
         and ensures clean thread termination.
         """
-        self._stop_event.set()
+        self.signal_stop()
         if not self.wait(5000):  # Wait max 5 seconds for thread to finish
             logger.warning("GenerateGalleryThread did not stop within timeout; some image processing may still be running")
 

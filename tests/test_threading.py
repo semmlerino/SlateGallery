@@ -513,3 +513,195 @@ class TestThreadingIntegrationImproved:
             assert (output_dir / 'index.html').exists()
 
             # Thread cleanup handled by fixture
+
+
+class TestThreadSafety:
+    """Test thread safety improvements."""
+
+    def test_signal_stop_method(self, qtbot, thread_cleanup):
+        """Test that signal_stop() sets stop event without waiting."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_path = Path(temp_dir)
+            images_dir = base_path / "images"
+            cache_dir = base_path / "cache"
+            images_dir.mkdir()
+            cache_dir.mkdir()
+
+            # Create a lot of images to ensure thread takes a while
+            for i in range(20):
+                create_real_test_image(images_dir / f"img_{i}.jpg")
+
+            cache_manager = ImprovedCacheManager(base_dir=str(cache_dir))
+            thread = thread_cleanup(ScanThread(str(images_dir), cache_manager))
+
+            thread.start()
+
+            # Wait a tiny bit for thread to start
+            import time
+            time.sleep(0.1)
+
+            # signal_stop() should return immediately (not wait for thread)
+            start = time.time()
+            thread.signal_stop()
+            duration = time.time() - start
+
+            # signal_stop should be nearly instant (< 0.1 seconds)
+            assert duration < 0.5, f"signal_stop() took {duration}s, should be instant"
+
+            # Now wait for thread to actually stop
+            thread.wait(5000)
+
+    def test_stop_during_exif_processing(self, qtbot, thread_cleanup):
+        """Test that stop event cancels EXIF processing.
+
+        This test verifies that when stop_event is set before processing,
+        the method returns early with no results.
+        """
+        import threading
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_path = Path(temp_dir)
+            images_dir = base_path / "images"
+            cache_dir = base_path / "cache"
+            images_dir.mkdir()
+            cache_dir.mkdir()
+
+            # Create images
+            for i in range(10):
+                create_real_test_image(images_dir / f"img_{i}.jpg", focal_length=35)
+
+            cache_manager = ImprovedCacheManager(base_dir=str(cache_dir))
+
+            # Create stop event and SET IT BEFORE PROCESSING
+            stop_event = threading.Event()
+            stop_event.set()  # Already signaled
+
+            # Get image paths
+            image_paths = [str(p) for p in images_dir.glob("*.jpg")]
+
+            # Process with pre-set stop event - should return immediately with no results
+            result = cache_manager.process_images_batch_with_exif(
+                image_paths,
+                None,
+                None,
+                stop_event,
+            )
+
+            # Processing should have been stopped immediately (no results)
+            assert len(result) == 0, (
+                f"Got {len(result)} results but expected 0 when stop_event is pre-set"
+            )
+
+    def test_concurrent_cache_file_access(self, qtbot):
+        """Test that cache file I/O is protected by lock."""
+        import threading
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache_manager = ImprovedCacheManager(base_dir=temp_dir)
+
+            # Create test data
+            test_slates = {"test_slate": {"images": [{"path": "/test/img.jpg"}]}}
+            root_dir = str(Path(temp_dir) / "test_dir")
+            Path(root_dir).mkdir()
+
+            # Track any errors
+            errors: list[Exception] = []
+            operations_count = 0
+            operations_lock = threading.Lock()
+
+            def save_worker():
+                nonlocal operations_count
+                try:
+                    for _ in range(10):
+                        cache_manager.save_cache(root_dir, test_slates)
+                        with operations_lock:
+                            operations_count += 1
+                except Exception as e:
+                    errors.append(e)
+
+            def load_worker():
+                nonlocal operations_count
+                try:
+                    for _ in range(10):
+                        cache_manager.load_cache(root_dir)
+                        with operations_lock:
+                            operations_count += 1
+                except Exception as e:
+                    errors.append(e)
+
+            def validate_worker():
+                nonlocal operations_count
+                try:
+                    for _ in range(10):
+                        cache_manager.validate_cache(root_dir)
+                        with operations_lock:
+                            operations_count += 1
+                except Exception as e:
+                    errors.append(e)
+
+            # Start multiple threads accessing cache concurrently
+            threads = [
+                threading.Thread(target=save_worker),
+                threading.Thread(target=load_worker),
+                threading.Thread(target=validate_worker),
+                threading.Thread(target=save_worker),
+                threading.Thread(target=load_worker),
+            ]
+
+            for t in threads:
+                t.start()
+
+            for t in threads:
+                t.join(timeout=10)
+
+            # No errors should have occurred (lock protects file access)
+            assert len(errors) == 0, f"Concurrent access errors: {errors}"
+            assert operations_count == 50, f"Expected 50 operations, got {operations_count}"
+
+    def test_parallel_thread_shutdown(self, qtbot, thread_cleanup):
+        """Test that multiple threads can be stopped in parallel."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_path = Path(temp_dir)
+
+            # Create two image directories
+            dir1 = base_path / "dir1"
+            dir2 = base_path / "dir2"
+            dir1.mkdir()
+            dir2.mkdir()
+            cache_dir = base_path / "cache"
+            cache_dir.mkdir()
+
+            # Create images in both
+            for i in range(10):
+                create_real_test_image(dir1 / f"img_{i}.jpg")
+                create_real_test_image(dir2 / f"img_{i}.jpg")
+
+            cache_manager = ImprovedCacheManager(base_dir=str(cache_dir))
+
+            # Create two threads
+            thread1 = thread_cleanup(ScanThread(str(dir1), cache_manager))
+            thread2 = thread_cleanup(ScanThread(str(dir2), cache_manager))
+
+            thread1.start()
+            thread2.start()
+
+            # Wait for threads to start
+            import time
+            time.sleep(0.1)
+
+            # Signal both to stop (parallel)
+            start = time.time()
+            thread1.signal_stop()
+            thread2.signal_stop()
+            signal_duration = time.time() - start
+
+            # Signaling should be fast
+            assert signal_duration < 0.1, f"Signaling took {signal_duration}s, should be instant"
+
+            # Wait for both (they're now stopping in parallel)
+            thread1.wait(5000)
+            thread2.wait(5000)
+
+            # Both threads should be stopped
+            assert not thread1.isRunning()
+            assert not thread2.isRunning()

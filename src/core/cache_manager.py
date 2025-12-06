@@ -83,7 +83,7 @@ class ImprovedCacheManager:
         cache_file = self.get_composite_cache_file(root_dirs)
         if os.path.exists(cache_file):
             try:
-                with open(cache_file) as f:
+                with self._cache_lock, open(cache_file) as f:
                     cache_data: dict[str, object] = cast(dict[str, object], json.load(f))
 
                 # Strip _metadata from returned slates
@@ -134,7 +134,7 @@ class ImprovedCacheManager:
                 **slates,
             }
 
-            with open(cache_file, "w") as f:
+            with self._cache_lock, open(cache_file, "w") as f:
                 json.dump(cache_data, f)
             logger.info(f"Saved V{CACHE_VERSION} composite cache for {len(root_dirs)} directories ({file_count} images)")
         except Exception as e:
@@ -155,7 +155,7 @@ class ImprovedCacheManager:
             return False
 
         try:
-            with open(cache_file) as f:
+            with self._cache_lock, open(cache_file) as f:
                 cache_data: dict[str, object] = cast(dict[str, object], json.load(f))
 
             metadata_obj = cache_data.get("_metadata")
@@ -211,7 +211,7 @@ class ImprovedCacheManager:
         cache_file = self.get_cache_file(root_dir)
         if os.path.exists(cache_file):
             try:
-                with open(cache_file) as f:
+                with self._cache_lock, open(cache_file) as f:
                     cache_data: dict[str, object] = cast(dict[str, object], json.load(f))
 
                 # Strip _metadata from returned slates
@@ -239,7 +239,7 @@ class ImprovedCacheManager:
             return False
 
         try:
-            with open(cache_file) as f:
+            with self._cache_lock, open(cache_file) as f:
                 cache_data: dict[str, object] = cast(dict[str, object], json.load(f))
 
             metadata_obj = cache_data.get("_metadata")
@@ -303,7 +303,7 @@ class ImprovedCacheManager:
                 **slates,
             }
 
-            with open(cache_file, "w") as f:
+            with self._cache_lock, open(cache_file, "w") as f:
                 json.dump(cache_data, f)
             logger.info(f"Saved V{CACHE_VERSION} cache for directory: {root_dir} ({file_count} images)")
         except Exception as e:
@@ -332,6 +332,7 @@ class ImprovedCacheManager:
         image_paths: Sequence[str],
         existing_cache: Optional[dict[str, dict[str, object]]] = None,
         _callback: Optional[Callable[[int], None]] = None,
+        stop_event: Optional[threading.Event] = None,
     ) -> list[dict[str, object]]:
         """Process images with EXIF extraction and caching.
 
@@ -339,6 +340,7 @@ class ImprovedCacheManager:
             image_paths: Sequence of image file paths
             existing_cache: Previously cached slate data for incremental updates
             _callback: Optional progress callback
+            stop_event: Optional threading.Event to signal cancellation
 
         Returns:
             List of image dictionaries with path, mtime, and exif data
@@ -368,6 +370,11 @@ class ImprovedCacheManager:
 
         # Check which images need EXIF extraction
         for path_obj in image_paths:
+            # Check for stop signal
+            if stop_event and stop_event.is_set():
+                logger.info("EXIF processing cancelled during cache check")
+                return results
+
             path = str(path_obj)
             try:
                 current_mtime = os.path.getmtime(path)
@@ -400,6 +407,12 @@ class ImprovedCacheManager:
                 for completed, future in enumerate(
                     concurrent.futures.as_completed(futures), start=1
                 ):
+                    # Check for stop signal
+                    if stop_event and stop_event.is_set():
+                        logger.info("EXIF processing cancelled, shutting down executor")
+                        executor.shutdown(wait=False, cancel_futures=True)
+                        break
+
                     try:
                         result = future.result()
                         if result:
@@ -531,7 +544,7 @@ class ImprovedCacheManager:
             return 0
 
         try:
-            with open(cache_file) as f:
+            with self._cache_lock, open(cache_file) as f:
                 cache_data: dict[str, object] = cast(dict[str, object], json.load(f))
 
             metadata_obj = cache_data.get("_metadata")

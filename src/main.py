@@ -1210,14 +1210,21 @@ class GalleryGeneratorApp(QMainWindow):
     @override
     def closeEvent(self, event: object) -> None:
         try:
-            # Stop and wait for running threads
+            # Signal both threads to stop (non-blocking, triggers parallel shutdown)
             if self.scan_thread and self.scan_thread.isRunning():
-                logger.info("Stopping scan thread...")
-                self.scan_thread.stop()
+                logger.info("Signaling scan thread to stop...")
+                self.scan_thread.signal_stop()
 
             if self.gallery_thread and self.gallery_thread.isRunning():
-                logger.info("Stopping gallery generation thread...")
-                self.gallery_thread.stop()
+                logger.info("Signaling gallery thread to stop...")
+                self.gallery_thread.signal_stop()
+
+            # Wait for both threads (they're now stopping in parallel)
+            if self.scan_thread and not self.scan_thread.wait(5000):
+                logger.warning("Scan thread did not stop within timeout")
+
+            if self.gallery_thread and not self.gallery_thread.wait(5000):
+                logger.warning("Gallery thread did not stop within timeout")
 
             # Stop filter timer
             self.filter_timer.stop()
