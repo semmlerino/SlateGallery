@@ -164,21 +164,21 @@ class CardWidget(QWidget):
 
 
 class GalleryGeneratorApp(QMainWindow):
-    # UI widget type annotations (initialized in _create_* methods)
-    selected_dirs_display: Optional[QtWidgets.QPlainTextEdit] = None
-    btn_scan: Optional[QPushButton] = None
-    lbl_filter_count: Optional[QLabel] = None
-    txt_filter: Optional[QLineEdit] = None
-    txt_exclude: Optional[QLineEdit] = None
-    list_slates: Optional[QListWidget] = None
-    btn_refresh: Optional[QPushButton] = None
-    chk_generate_thumbnails: Optional[QCheckBox] = None
-    combo_thumbnail_size: Optional[QComboBox] = None
-    chk_lazy_loading: Optional[QCheckBox] = None
-    btn_generate: Optional[QPushButton] = None
-    btn_open_gallery: Optional[QPushButton] = None
-    lbl_status: Optional[QLabel] = None
-    progress_bar: Optional[QProgressBar] = None
+    # UI widget type annotations (initialized in initUI via _create_* methods)
+    selected_dirs_display: QtWidgets.QPlainTextEdit  # pyright: ignore[reportUninitializedInstanceVariable]
+    btn_scan: QPushButton  # pyright: ignore[reportUninitializedInstanceVariable]
+    lbl_filter_count: QLabel  # pyright: ignore[reportUninitializedInstanceVariable]
+    txt_filter: QLineEdit  # pyright: ignore[reportUninitializedInstanceVariable]
+    txt_exclude: QLineEdit  # pyright: ignore[reportUninitializedInstanceVariable]
+    list_slates: QListWidget  # pyright: ignore[reportUninitializedInstanceVariable]
+    btn_refresh: QPushButton  # pyright: ignore[reportUninitializedInstanceVariable]
+    chk_generate_thumbnails: QCheckBox  # pyright: ignore[reportUninitializedInstanceVariable]
+    combo_thumbnail_size: QComboBox  # pyright: ignore[reportUninitializedInstanceVariable]
+    chk_lazy_loading: QCheckBox  # pyright: ignore[reportUninitializedInstanceVariable]
+    btn_generate: QPushButton  # pyright: ignore[reportUninitializedInstanceVariable]
+    btn_open_gallery: QPushButton  # pyright: ignore[reportUninitializedInstanceVariable]
+    lbl_status: QLabel  # pyright: ignore[reportUninitializedInstanceVariable]
+    progress_bar: QProgressBar  # pyright: ignore[reportUninitializedInstanceVariable]
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -744,8 +744,6 @@ class GalleryGeneratorApp(QMainWindow):
                     self.update_selected_dirs_display()
 
                     # Update preferences from UI and save configuration
-                    assert self.chk_generate_thumbnails is not None
-                    assert self.chk_lazy_loading is not None
                     self.generate_thumbnails_pref = self.chk_generate_thumbnails.isChecked()
                     self.lazy_loading_pref = self.chk_lazy_loading.isChecked()
                     self._sync_config_and_save()
@@ -1167,17 +1165,14 @@ class GalleryGeneratorApp(QMainWindow):
 
     @log_function
     def update_status(self, message: str) -> None:
-        if self.lbl_status:
-            self.lbl_status.setText(f"{message}")
+        self.lbl_status.setText(message)
         logger.info(f"Status updated: {message}")
 
     def on_thumbnail_pref_changed(self) -> None:
         """Save thumbnail preference when checkbox state changes."""
-        if self.chk_generate_thumbnails:
-            self.generate_thumbnails_pref = self.chk_generate_thumbnails.isChecked()
+        self.generate_thumbnails_pref = self.chk_generate_thumbnails.isChecked()
         # Enable/disable size dropdown based on checkbox state
-        if self.combo_thumbnail_size:
-            self.combo_thumbnail_size.setEnabled(self.generate_thumbnails_pref)
+        self.combo_thumbnail_size.setEnabled(self.generate_thumbnails_pref)
         self._sync_config_and_save()
 
     def on_thumbnail_size_changed(self, text: object) -> None:
@@ -1198,8 +1193,7 @@ class GalleryGeneratorApp(QMainWindow):
 
     def on_lazy_loading_pref_changed(self) -> None:
         """Save lazy loading preference when checkbox state changes."""
-        if self.chk_lazy_loading:
-            self.lazy_loading_pref = self.chk_lazy_loading.isChecked()
+        self.lazy_loading_pref = self.chk_lazy_loading.isChecked()
         self._sync_config_and_save()
         logger.info(f"Lazy loading preference changed to: {self.lazy_loading_pref}")
 
