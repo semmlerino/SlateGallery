@@ -6,7 +6,6 @@ while maintaining identical functionality to the original.
 """
 
 # System imports
-import fnmatch
 import os
 import sys
 import webbrowser
@@ -557,7 +556,7 @@ class GalleryGeneratorApp(QMainWindow):
         exclude_input_layout.addWidget(lbl_exclude)
 
         self.txt_exclude = QLineEdit()
-        self.txt_exclude.setPlaceholderText("Exclude patterns (e.g., *hdri*, *test*)...")
+        self.txt_exclude.setPlaceholderText("Exclude (e.g., hdri, test)...")
         self.txt_exclude.setText(self.exclude_patterns_pref)  # Load saved preference
         _ = self.txt_exclude.textChanged.connect(self.on_filter)
         exclude_input_layout.addWidget(self.txt_exclude)
@@ -956,11 +955,11 @@ class GalleryGeneratorApp(QMainWindow):
         # Apply exclusion filter if pattern is present
         if exclude_pattern:
             # Split by comma to support multiple patterns
-            exclude_patterns = [p.strip() for p in exclude_pattern.split(',') if p.strip()]
+            exclude_patterns = [p.strip().lower() for p in exclude_pattern.split(',') if p.strip()]
             filtered = {
                 slate: data
                 for slate, data in filtered.items()
-                if not any(fnmatch.fnmatch(slate.lower(), pattern.lower()) for pattern in exclude_patterns)
+                if not any(pattern in slate.lower() for pattern in exclude_patterns)
             }
 
         self.filtered_slates = filtered
