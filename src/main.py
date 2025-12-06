@@ -121,7 +121,9 @@ class HtmlItemDelegate(QStyledItemDelegate):
         doc.setHtml(opt.text)
         doc.setTextWidth(opt.rect.width() if opt.rect.width() > 0 else 200)
 
-        return QSize(int(doc.idealWidth()), int(doc.size().height()))
+        # Add vertical padding for better spacing
+        height = int(doc.size().height()) + 12
+        return QSize(int(doc.idealWidth()), height)
 
 
 # ----------------------------- Design Tokens -----------------------------
