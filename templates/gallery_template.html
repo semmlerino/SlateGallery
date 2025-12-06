@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Slate Photography Gallery</title>
+    <style>
+{% include 'gallery_styles.css' %}
+    </style>
+</head>
+<body data-lazy-loading="{{ 'true' if lazy_loading else 'false' }}">
+    <div class="notification-bar" id="notification-bar"></div>
+
+    <!-- ARIA Live Region for screen reader announcements -->
+    <div id="aria-live-region" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+    <div class="size-adjustment" id="size-adjustment">
+        <label for="size-slider">Size:</label>
+        <input type="range" id="size-slider" min="100" max="800" value="100">
+        <span id="size-value">100px</span>
+    </div>
+
+    <!-- View Mode Controls -->
+    <div class="view-mode-controls">
+        <button type="button" id="toggle-hidden-mode" aria-label="Toggle hidden images view" aria-pressed="false">
+            <span class="show-hidden-text">Show Hidden Images</span>
+            <span class="show-gallery-text" style="display:none;">Back to Gallery</span>
+            <span class="hidden-count-badge" style="display:none;" aria-label=""></span>
+        </button>
+        <button type="button" id="unhide-all-button" style="display:none;" aria-label="Unhide all hidden images">
+            Unhide All
+        </button>
+        <button type="button" id="toggle-selected-mode" aria-label="Toggle selected images view" aria-pressed="false">
+            <span class="show-selected-text">Show Selected Images</span>
+            <span class="show-all-text" style="display:none;">Back to Gallery</span>
+            <span class="selected-count-badge" style="display:none;" aria-label=""></span>
+        </button>
+    </div>
+
+    <div class="export-button">
+        <button type="button" id="export-to-clipboard" aria-label="Export to Clipboard">Export to Clipboard</button>
+    </div>
+
+    <!-- Floating Hide Selected Button (only visible when images are selected) -->
+    <div class="floating-hide-button" id="floating-hide-button" style="display: none;">
+        <button type="button" id="floating-hide-selected" aria-label="Hide selected images (Shift+H)" title="Keyboard shortcut: Shift+H">
+            <span aria-hidden="true">👁️‍🗨️</span> Hide Selected
+        </button>
+    </div>
+
+    <!-- Floating Clear Selection Button (only visible when images are selected) -->
+    <div class="floating-clear-button" id="floating-clear-button" style="display: none;">
+        <button type="button" id="floating-clear-selection" aria-label="Clear current selection">
+            <span aria-hidden="true">✕</span> Clear Selection
+        </button>
+    </div>
+
+    <h1>Slate Photography Gallery</h1>
+
+    <div class="filters">
+        <div class="filter-group" id="orientation-filters">
+            <label>Orientation:</label>
+            <label><input type="checkbox" class="orientation-filter" value="portrait" aria-label="Portrait"> Portrait</label>
+            <label><input type="checkbox" class="orientation-filter" value="landscape" aria-label="Landscape"> Landscape</label>
+        </div>
+
+        <div class="filter-group" id="focal-length-filters">
+            <label>Focal Length:</label>
+            <div class="focal-length-options">
+                {% for focal in focal_lengths %}
+                    <label><input type="checkbox" class="focal-length-filter" value="{{ focal.value }}" aria-label="{{ focal.value }}mm"> {{ focal.value }}mm ({{ focal.count }} photos)</label>
+                {% endfor %}
+            </div>
+            <div class="button-group">
+                <button type="button" id="select-all-focal-length" aria-label="Select All Focal Lengths">Select All</button>
+                <button type="button" id="deselect-all-focal-length" aria-label="Deselect All Focal Lengths">Deselect All</button>
+            </div>
+        </div>
+
+        <div class="filter-group" id="date-filters">
+            <label>Date Taken:</label>
+            <div class="date-options">
+                {% for date in dates %}
+                    <label><input type="checkbox" class="date-filter" value="{{ date.value }}" aria-label="{{ date.display_date }}"> {{ date.display_date }} ({{ date.count }} photos)</label>
+                {% endfor %}
+            </div>
+            <div class="button-group">
+                <button type="button" id="select-all-date" aria-label="Select All Dates">Select All</button>
+                <button type="button" id="deselect-all-date" aria-label="Deselect All Dates">Deselect All</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="photo-controls">
+        <!-- Updated button text and aria-label -->
+        <button type="button" id="select-all-photos" aria-label="Select all visible Photos">Select all visible Photos</button>
+        <button type="button" id="deselect-all-photos" aria-label="Deselect All Photos">Deselect All Photos</button>
+        <button type="button" id="hide-selected-photos" aria-label="Hide all selected images from gallery" title="Keyboard shortcut: Shift+H">Hide Selected</button>
+    </div>
+
+    <!-- Status Bar: Shows visible/total images and selection count -->
+    <div class="status-bar" id="status-bar">
+        Showing 0 of 0 images | 0 selected
+    </div>
+
+    {% for slate in gallery %}
+        <div class="slate">
+            <div class="slate-header">
+                <h2>{{ slate.slate }}</h2>
+                <div class="slate-controls">
+                    <button type="button" class="select-all-slate" aria-label="Select all photos in {{ slate.slate }}">Select All Photos in Slate</button>
+                    <button type="button" class="deselect-all-slate" aria-label="Deselect all photos in {{ slate.slate }}">Deselect All Photos in Slate</button>
+                </div>
+            </div>
+            <hr class="slate-underline">
+
+            <div class="images">
+                {% for image in slate.images %}
+                    <div class="image-container"
+                         data-orientation="{{ image.orientation }}"
+                         data-focal-length="{{ image.focal_length }}"
+                         data-date="{{ image.date_taken }}"
+                         data-full-image="{{ image.original_path }}">
+                        <input type="checkbox" class="select-checkbox" aria-label="Select {{ image.filename }}">
+                        <!-- Using single optimized thumbnail {% if lazy_loading %}with lazy loading{% endif %} for optimal performance -->
+                        <img src="{{ image.thumbnail | default(image.original_path) }}"
+                             data-src-full="{{ image.original_path }}"
+                             {% if lazy_loading %}loading="lazy"{% endif %}
+                             decoding="async"
+                             alt="Photo of {{ image.filename }}">
+                        <button class="enlarge-button" aria-label="Enlarge {{ image.filename }}">
+                            <!-- SVG Magnifying Glass Icon -->
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#ffffff" viewBox="0 0 24 24">
+                                <path d="M10 2a8 8 0 105.293 14.707l4.647 4.646a1 1 0 001.414-1.414l-4.646-4.647A8 8 0 0010 2zm0 2a6 6 0 110 12A6 6 0 0110 4z"/>
+                            </svg>
+                        </button>
+                        <div class="image-info">
+                            <strong>{{ image.filename }}</strong><br>
+                            Focal Length: {{ image.focal_length }}mm
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% else %}
+        <div class="empty-gallery">
+            <p>No images found in this gallery.</p>
+            <p>Add images to your slate directories to populate the gallery.</p>
+        </div>
+    {% endfor %}
+
+    <div id="image-modal" class="modal" aria-modal="true" role="dialog" tabindex="-1">
+        <span class="close-button" aria-label="Close" tabindex="0">&times;</span>
+        <span class="prev-button" aria-label="Previous Image" tabindex="0">&#10094;</span>
+        <span class="next-button" aria-label="Next Image" tabindex="0">&#10095;</span>
+
+        <button class="modal-hide-button" id="modal-hide-button" aria-label="Hide this image from gallery" title="Keyboard shortcut: H">
+            <span aria-hidden="true">👁️‍🗨️</span> <span id="modal-hide-text">Hide Image</span>
+        </button>
+
+        <div class="modal-image-container">
+            <img class="modal-content" id="modal-image" alt="Enlarged Photo">
+            <input type="checkbox" class="modal-checkbox" id="modal-select-checkbox" aria-label="Select Photo">
+        </div>
+
+        <div id="modal-caption" class="modal-caption"></div>
+    </div>
+
+    <script>
+{% include 'gallery_script.js' %}
+    </script>
+
+</body>
+</html>
