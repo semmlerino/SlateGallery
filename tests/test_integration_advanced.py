@@ -98,7 +98,7 @@ class TestLazyLoadingIntegration:
             lazy_loading=True
         )
 
-        assert success
+        assert success[0]
 
         # Check HTML contains lazy loading
         html_file = gallery_environment['output_dir'] / 'index.html'
@@ -122,7 +122,7 @@ class TestLazyLoadingIntegration:
             lazy_loading=False
         )
 
-        assert success
+        assert success[0]
 
         # Check HTML does NOT contain lazy loading
         content = html_file.read_text()
@@ -154,7 +154,7 @@ class TestLazyLoadingIntegration:
             lazy_loading=True
         )
         lazy_time = time.perf_counter() - start
-        assert success
+        assert success[0]
 
         # Both should complete quickly since we're just generating HTML
         # The real performance difference would be in browser loading
@@ -297,7 +297,7 @@ class TestMixedImageFormats:
             thread.start()
 
         success, message = blocker.args
-        assert success
+        assert success  # success from signal is already bool
 
         # Verify thumbnails were created
         thumb_dir = output_dir / 'thumbnails'
@@ -377,7 +377,7 @@ class TestErrorRecovery:
             )
 
             # Should fail gracefully
-            assert not success
+            assert not success[0]
 
         finally:
             # Restore permissions for cleanup
@@ -560,7 +560,7 @@ class TestEndToEndWorkflow:
             gallery_thread.start()
 
         success, gen_message = blocker.args
-        assert success
+        assert success  # success from signal is already bool
         assert 'generated' in gen_message.lower()
 
         # Step 3: Verify output

@@ -236,7 +236,7 @@ class TestRealWorldScenarios:
             lazy_loading=True
         )
 
-        assert success
+        assert success[0]
 
         # Validate HTML structure
         html_file = output_dir / 'index.html'
@@ -331,7 +331,7 @@ class TestRealWorldScenarios:
             status_callback=lambda x: None,
             lazy_loading=False
         )
-        assert success
+        assert success[0]
 
         # Check initial gallery
         html_content = (output_dir / 'index.html').read_text()
@@ -360,7 +360,7 @@ class TestRealWorldScenarios:
             status_callback=lambda x: None,
             lazy_loading=False
         )
-        assert success
+        assert success[0]
 
         # Check updated gallery
         html_content = (output_dir / 'index.html').read_text()
@@ -468,7 +468,7 @@ class TestPlatformCompatibility:
             lazy_loading=True
         )
 
-        assert success
+        assert success[0]
 
         # Verify unicode content is preserved
         html_file = output_dir / 'index.html'

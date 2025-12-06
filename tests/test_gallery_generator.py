@@ -157,7 +157,7 @@ class TestGenerateHtmlGalleryImproved:
         )
 
         # Verify success
-        assert success is True
+        assert success[0] is True
 
         # Verify status messages were collected
         assert status_collector.call_count > 0
@@ -188,7 +188,7 @@ class TestGenerateHtmlGalleryImproved:
             status_callback=status_collector
         )
 
-        assert success is True
+        assert success[0] is True
         assert status_collector.has_message("Gallery generated at")
 
         # Output file should exist but have no gallery items
@@ -215,7 +215,7 @@ class TestGenerateHtmlGalleryImproved:
             status_callback=status_collector
         )
 
-        assert success is True
+        assert success[0] is True
         assert Path(new_output).exists()
 
     def test_generate_html_gallery_invalid_template(self, gallery_setup, status_collector, caplog):
@@ -235,7 +235,7 @@ class TestGenerateHtmlGalleryImproved:
         )
 
         # Should fail gracefully
-        assert success is False
+        assert success[0] is False
 
         # Should log the template error
         assert "template" in caplog.text.lower() or "error" in caplog.text.lower()
@@ -254,7 +254,7 @@ class TestGenerateHtmlGalleryImproved:
             status_callback=status_collector
         )
 
-        assert success is False
+        assert success[0] is False
         assert "error" in caplog.text.lower()
 
     def test_generate_html_gallery_unicode_handling(self, gallery_setup, status_collector):
@@ -285,7 +285,7 @@ class TestGenerateHtmlGalleryImproved:
             status_callback=status_collector
         )
 
-        assert success is True
+        assert success[0] is True
 
         output_file = Path(gallery_setup['output_dir']) / 'index.html'
         content = output_file.read_text(encoding='utf-8')
@@ -306,7 +306,7 @@ class TestGenerateHtmlGalleryImproved:
                 allowed_root_dirs=gallery_setup['root_dir'],
                 status_callback=collector
             )
-            assert success is True
+            assert success[0] is True
 
         # Each collector should have received messages
         for collector in collectors:
@@ -331,7 +331,7 @@ class TestGenerateHtmlGalleryImproved:
         )
 
         # Generation should still succeed
-        assert success is True
+        assert success[0] is True
 
         # Output file should exist
         output_file = Path(gallery_setup['output_dir']) / 'index.html'
@@ -399,7 +399,7 @@ class TestGalleryGeneratorIntegration:
             status_callback=collector
         )
 
-        assert success is True
+        assert success[0] is True
 
         # Verify output
         output_file = output_dir / 'index.html'

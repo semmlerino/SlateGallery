@@ -210,7 +210,11 @@ class GalleryGeneratorApp(QMainWindow):
             if cached_slates:
                 self.slates_dict = cached_slates
                 self.apply_filters()
-                self.update_status(f"Loaded {len(cached_slates)} collections from cache (ready to generate)")
+                # Check if cache is still valid
+                if self.cache_manager.validate_cache(self.current_root_dir):
+                    self.update_status(f"Loaded {len(cached_slates)} collections from cache (ready to generate)")
+                else:
+                    self.update_status(f"Loaded {len(cached_slates)} collections (cache may be outdated - click Scan to refresh)")
                 self.progress_bar.setValue(100)
             else:
                 self.update_status("No cache found. Please scan directory.")
@@ -753,17 +757,29 @@ class GalleryGeneratorApp(QMainWindow):
             self.unique_focal_lengths = set()
             self.list_slates.clear()
 
-            # For single directory, check cache
+            # Check cache (single directory or composite for multiple)
+            cached_slates = None
+            cache_valid = False
+
             if len(self.selected_slate_dirs) == 1:
                 cached_slates = self.cache_manager.load_cache(self.selected_slate_dirs[0])
-                if cached_slates:
-                    self.slates_dict = cached_slates
-                    self.apply_filters()
+                cache_valid = self.cache_manager.validate_cache(self.selected_slate_dirs[0]) if cached_slates else False
+            else:
+                cached_slates = self.cache_manager.load_composite_cache(self.selected_slate_dirs)
+                cache_valid = self.cache_manager.validate_composite_cache(self.selected_slate_dirs) if cached_slates else False
+
+            if cached_slates:
+                self.slates_dict = cached_slates
+                self.apply_filters()
+                # Check if cache is still valid
+                if cache_valid:
                     self.update_status("Loaded slates from cache.")
-                    self.progress_bar.setValue(100)
-                    QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))
-                    logger.info(f"Loaded slates from cache for directory: {self.selected_slate_dirs[0]}")
-                    return
+                else:
+                    self.update_status("Loaded from cache (may be outdated - click Scan again to refresh)")
+                self.progress_bar.setValue(100)
+                QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))
+                logger.info(f"Loaded slates from cache for {len(self.selected_slate_dirs)} directory(ies)")
+                return
 
             # Start scan thread with selected directories
             self.scan_thread = ScanThread(self.selected_slate_dirs, self.cache_manager, self.exclude_patterns_pref)  # pyright: ignore[reportArgumentType]

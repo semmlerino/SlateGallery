@@ -67,7 +67,7 @@ def generate_html_gallery(
     allowed_root_dirs: Union[str, list[str]],
     status_callback: Callable[[str], None],
     lazy_loading: bool = True,
-) -> bool:
+) -> tuple[bool, int]:
     """Generate HTML gallery from processed data.
 
     Args:
@@ -81,8 +81,9 @@ def generate_html_gallery(
         lazy_loading: Whether to enable lazy loading of images
 
     Returns:
-        True if successful, False otherwise
+        Tuple of (success: bool, skipped_count: int)
     """
+    skipped_count = 0
     try:
         # Normalize allowed_root_dirs to a list for uniform handling
         if isinstance(allowed_root_dirs, str):
@@ -105,6 +106,7 @@ def generate_html_gallery(
                         allowed_dirs_str = ", ".join(real_allowed_roots)
                         logger.error(f"Image path {original_path} is outside of allowed directories: {allowed_dirs_str}")
                         status_callback(f"Skipping image outside of allowed directories: {original_path}")
+                        skipped_count += 1
                         continue
 
                     # Use absolute path with forward slashes for web
@@ -115,6 +117,7 @@ def generate_html_gallery(
                 except Exception as e:
                     logger.error(f"Error processing image {original_path}: {e}", exc_info=True)
                     status_callback(f"Error processing image {original_path}: {e}")
+                    skipped_count += 1
                     continue
 
         # Load and render template
@@ -126,7 +129,7 @@ def generate_html_gallery(
         except Exception as e:
             status_callback(f"Error rendering template: {e}")
             logger.error(f"Error rendering template: {e}", exc_info=True)
-            return False
+            return (False, skipped_count)
 
         # Create output directory if needed
         if not os.path.exists(output_dir):
@@ -136,7 +139,7 @@ def generate_html_gallery(
             except Exception as e:
                 status_callback(f"Error creating output directory: {e}")
                 logger.error(f"Error creating output directory: {e}", exc_info=True)
-                return False
+                return (False, skipped_count)
 
         # Write the HTML file
         try:
@@ -145,13 +148,13 @@ def generate_html_gallery(
                 _ = f.write(output_html.encode("utf-8"))
             status_callback(f"Gallery generated at {os.path.abspath(html_file_path)}")
             logger.info(f"Gallery generated at {os.path.abspath(html_file_path)}")
-            return True
+            return (True, skipped_count)
         except Exception as e:
             status_callback(f"Error writing HTML file: {e}")
             logger.error(f"Error writing HTML file: {e}", exc_info=True)
-            return False
+            return (False, skipped_count)
 
     except Exception as e:
         status_callback(f"Error generating gallery: {e}")
         logger.error(f"Error generating gallery: {e}", exc_info=True)
-        return False
+        return (False, skipped_count)

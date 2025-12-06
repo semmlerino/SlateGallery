@@ -145,7 +145,7 @@ class TestImprovedCacheManager:
         def test_callback(message):
             callback_calls.append(message)
 
-        result = cache_manager.process_images_batch(image_paths, callback=test_callback)
+        result = cache_manager.process_images_batch(image_paths, _callback=test_callback)
 
         assert result == [{'path': '/path/to/image1.jpg'}]
         # Currently callback isn't used in implementation, but test structure is ready

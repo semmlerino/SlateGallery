@@ -130,7 +130,7 @@ class TestGenerateHtmlGallery:
             status_callback=status_callback
         )
 
-        assert result is True
+        assert result[0] is True
 
         # Check that HTML file was created
         html_file = temp_dirs['output_dir'] / 'index.html'
@@ -165,7 +165,7 @@ class TestGenerateHtmlGallery:
             status_callback=status_callback
         )
 
-        assert result is True
+        assert result[0] is True
         assert nonexistent_output.exists()
         assert (nonexistent_output / 'index.html').exists()
 
@@ -184,7 +184,7 @@ class TestGenerateHtmlGallery:
             status_callback=status_callback
         )
 
-        assert result is True
+        assert result[0] is True
 
         # Check HTML file was still created
         html_file = temp_dirs['output_dir'] / 'index.html'
@@ -213,7 +213,7 @@ class TestGenerateHtmlGallery:
             status_callback=status_callback
         )
 
-        assert result is False
+        assert result[0] is False
 
         # Check error was reported via callback
         status_callback.assert_called()
@@ -236,7 +236,7 @@ class TestGenerateHtmlGallery:
             status_callback=status_callback
         )
 
-        assert result is False
+        assert result[0] is False
         status_callback.assert_called()
 
     def test_generate_html_gallery_path_security(self, temp_dirs, simple_template):
@@ -273,7 +273,7 @@ class TestGenerateHtmlGallery:
         )
 
         # Should still succeed but skip the outside image
-        assert result is True
+        assert result[0] is True
 
         # Check that the callback was called with a security warning
         warning_calls = [call for call in status_callback.call_args_list
@@ -298,7 +298,7 @@ class TestGenerateHtmlGallery:
             status_callback=status_callback
         )
 
-        assert result is True
+        assert result[0] is True
 
         # Check that web_path was added to images
         for slate in sample_gallery_data:
@@ -340,7 +340,7 @@ class TestGenerateHtmlGallery:
             status_callback=status_callback
         )
 
-        assert result is True
+        assert result[0] is True
 
         # Check HTML content contains unicode characters
         html_file = temp_dirs['output_dir'] / 'index.html'
@@ -369,7 +369,7 @@ class TestGenerateHtmlGallery:
             status_callback=status_callback
         )
 
-        assert result is True
+        assert result[0] is True
 
         # Check that all focal lengths appear in HTML with counts
         html_file = temp_dirs['output_dir'] / 'index.html'
@@ -411,7 +411,7 @@ class TestGenerateHtmlGallery:
         )
 
         # Should still succeed (graceful error handling)
-        assert result is True
+        assert result[0] is True
 
         # Check that processing completed without crashing
         assert (temp_dirs['output_dir'] / 'index.html').exists()
@@ -438,7 +438,7 @@ class TestGenerateHtmlGallery:
             )
 
             # Should fail due to permission error
-            assert result is False
+            assert result[0] is False
             status_callback.assert_called()
         finally:
             # Restore permissions for cleanup
@@ -560,7 +560,7 @@ class TestGalleryGeneratorIntegration:
         )
 
         # Verify success
-        assert result is True
+        assert result[0] is True
         assert len(status_messages) > 0
         assert any('Gallery generated' in msg for msg in status_messages)
 

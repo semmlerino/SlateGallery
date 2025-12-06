@@ -116,21 +116,13 @@ def get_orientation(image_path: str, exif_data: ExifData) -> str:
         else:
             return "landscape"
     else:
-        image: Union[Image.Image, None] = None
         try:
-            image = Image.open(image_path)
-            width, height = image.size
-            return "portrait" if height > width else "landscape"
+            with Image.open(image_path) as image:
+                width, height = image.size
+                return "portrait" if height > width else "landscape"
         except Exception as e:
             logger.error(f"Error determining orientation for {image_path}: {e}", exc_info=True)
             return "unknown"
-        finally:
-            # type: ignore[union-attr, misc]
-            if image and hasattr(image, "fp") and image.fp and hasattr(image.fp, "close"):
-                try:
-                    _ = image.fp.close()
-                except Exception:
-                    pass
 
 
 @log_function

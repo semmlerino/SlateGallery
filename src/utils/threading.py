@@ -198,8 +198,11 @@ class ScanThread(QtCore.QThread):
                 self.progress.emit(int(exif_progress))
                 logger.debug(f"EXIF processing progress: {exif_progress:.2f}%")
 
-            # Save the scanned slates to cache (use first root_dir for legacy compatibility)
-            self.cache_manager.save_cache(self.root_dirs[0] if self.root_dirs else "", slates)
+            # Save the scanned slates to cache
+            if len(self.root_dirs) == 1:
+                self.cache_manager.save_cache(self.root_dirs[0], slates)
+            else:
+                self.cache_manager.save_composite_cache(self.root_dirs, slates)
 
             self.scan_complete.emit(slates, "Scan complete.")
             logger.info("Scan completed.")
@@ -266,6 +269,9 @@ class GenerateGalleryThread(QtCore.QThread):
         # Use 2x CPU count for I/O operations, capped at 16 to avoid overwhelming the system
         self.max_workers: int = min(multiprocessing.cpu_count() * 2, 16)
         logger.info(f"Using {self.max_workers} workers for parallel image processing")
+
+        # Track skipped images for user feedback
+        self.skipped_images: int = 0
 
     def stop(self) -> None:
         """Gracefully stop the thread."""
@@ -343,7 +349,7 @@ class GenerateGalleryThread(QtCore.QThread):
                 for date_key, count in sorted(self.date_counts.items())
             ]
 
-            success: bool = generate_html_gallery(
+            success, gallery_skipped = generate_html_gallery(
                 gallery_slates,  # pyright: ignore[reportArgumentType]
                 focal_length_data,  # pyright: ignore[reportArgumentType]
                 date_data,  # pyright: ignore[reportArgumentType]
@@ -353,8 +359,12 @@ class GenerateGalleryThread(QtCore.QThread):
                 self.emit_status,
                 self.lazy_loading,
             )
+            self.skipped_images += gallery_skipped
             if success:
-                message: str = "Gallery generated."
+                if self.skipped_images > 0:
+                    message: str = f"Gallery generated ({self.skipped_images} image(s) skipped due to errors)"
+                else:
+                    message = "Gallery generated."
                 self.progress.emit(100)
                 logger.info(message)
                 self.gallery_complete.emit(True, message)
@@ -395,6 +405,7 @@ class GenerateGalleryThread(QtCore.QThread):
                 except Exception as e:
                     image_path: str = future_to_image[future]
                     logger.error(f"Error processing image {image_path} in parallel: {e}")
+                    self.skipped_images += 1
 
         # Sort results to maintain original order
         results.sort(key=lambda x: str(x.get("filename", "")))

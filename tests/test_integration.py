@@ -162,7 +162,7 @@ class TestSlateGalleryIntegration:
             status_callback=capture_status
         )
 
-        assert success is True
+        assert success[0] is True
         assert len(status_messages) > 0
 
         # Step 6: Verify output
@@ -533,7 +533,7 @@ class TestDateFilteringIntegration:
             status_callback=capture_status
         )
 
-        assert success is True
+        assert success[0] is True
 
         # Step 4: Verify output contains date filtering elements
         output_file = Path(output_dir) / 'index.html'
@@ -631,7 +631,7 @@ class TestDateFilteringIntegration:
             status_callback=lambda x: None
         )
 
-        assert success is True
+        assert success[0] is True
 
         # Verify HTML handles images without dates
         output_file = Path(output_dir) / 'index.html'
@@ -705,4 +705,4 @@ class TestDateFilteringIntegration:
             status_callback=lambda x: None
         )
 
-        assert success is True
+        assert success[0] is True

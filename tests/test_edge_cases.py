@@ -273,7 +273,7 @@ class TestSecurityAndPathTraversal:
             )
 
             # The function should complete (may succeed or fail depending on implementation)
-            assert isinstance(success, bool)
+            assert isinstance(success, tuple) and isinstance(success[0], bool)
 
     def test_generate_html_gallery_template_render_error(self, secure_dirs):
         """Test handling of template rendering errors (lines 45-48)."""
@@ -300,7 +300,7 @@ class TestSecurityAndPathTraversal:
             )
 
             # Should handle template error gracefully
-            assert isinstance(success, bool)
+            assert isinstance(success, tuple) and isinstance(success[0], bool)
             if not success:
                 # If it failed, should have logged the error
                 mock_logger.error.assert_called()
@@ -332,7 +332,7 @@ class TestSecurityAndPathTraversal:
                 )
 
                 # Should fail gracefully
-                assert success is False
+                assert success[0] is False
 
                 # Should log the error
                 mock_logger.error.assert_called()
@@ -359,7 +359,7 @@ class TestSecurityAndPathTraversal:
                 )
 
                 # Should fail gracefully
-                assert success is False
+                assert success[0] is False
 
                 # Should have logged the error
                 mock_logger.error.assert_called()
