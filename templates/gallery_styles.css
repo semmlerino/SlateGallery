@@ -25,9 +25,19 @@
     background-color: #f44336;
 }
 
-/* CSS Variables for dynamic sizing */
+/* CSS Variables for dynamic sizing and layout */
 :root {
-    --image-width: 250px;
+    --image-width: 100px;
+    /* Floating button positions */
+    --floating-btn-right: 30px;
+    --floating-btn-bottom-export: 30px;
+    --floating-btn-bottom-hide: 100px;
+    --floating-btn-bottom-clear: 170px;
+    /* View controls position */
+    --view-controls-top: 30px;
+    --view-controls-right: 220px;
+    /* Size adjustment position */
+    --size-adjustment-top: 20px;
 }
 
 /* Body Styles */
@@ -122,7 +132,7 @@ h1 {
     box-shadow: 0 2px 6px rgba(0,0,0,0.2);
     flex: 1 1 100%;
     position: fixed;
-    top: 20px;
+    top: var(--size-adjustment-top);
     left: 50%;
     transform: translateX(-50%);
     width: 90%;
@@ -177,8 +187,8 @@ h1 {
 /* Export Button Styles - Floating Action Button (FAB) */
 .export-button {
     position: fixed;
-    bottom: 30px;
-    right: 30px;
+    bottom: var(--floating-btn-bottom-export);
+    right: var(--floating-btn-right);
     z-index: 950; /* Between size-adjustment and notification-bar */
 }
 .export-button button {
@@ -230,8 +240,8 @@ h1 {
 /* Floating Hide Selected Button - Positioned above export button */
 .floating-hide-button {
     position: fixed;
-    bottom: 100px;
-    right: 30px;
+    bottom: var(--floating-btn-bottom-hide);
+    right: var(--floating-btn-right);
     z-index: 950;
 }
 .floating-hide-button button {
@@ -261,8 +271,8 @@ h1 {
 /* Floating Clear Selection Button - Positioned above hide button */
 .floating-clear-button {
     position: fixed;
-    bottom: 170px;
-    right: 30px;
+    bottom: var(--floating-btn-bottom-clear);
+    right: var(--floating-btn-right);
     z-index: 950;
 }
 .floating-clear-button button {
@@ -476,6 +486,18 @@ h1 {
     background-color: rgba(0, 0, 0, 0.8);
 }
 
+.enlarge-button:focus {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+    background-color: rgba(0, 0, 0, 0.8);
+}
+
+.enlarge-button:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+    background-color: rgba(0, 0, 0, 0.8);
+}
+
 .enlarge-button svg {
     width: 16px;
     height: 16px;
@@ -683,8 +705,8 @@ h1 {
 /* View Mode Controls */
 .view-mode-controls {
     position: fixed;
-    top: 30px;
-    right: 220px;
+    top: var(--view-controls-top);
+    right: var(--view-controls-right);
     z-index: 950;
     display: flex;
     gap: 10px;
@@ -776,4 +798,28 @@ h1 {
     justify-content: center;
     padding: 0 5px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+/* Empty Gallery State */
+.empty-gallery {
+    text-align: center;
+    padding: 80px 20px;
+    color: #666666;
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    max-width: 600px;
+    margin: 40px auto;
+}
+
+.empty-gallery p {
+    margin: 10px 0;
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+.empty-gallery p:first-child {
+    font-size: 20px;
+    font-weight: 600;
+    color: #333333;
 }

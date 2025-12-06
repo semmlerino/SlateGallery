@@ -595,34 +595,34 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Function to filter images based on selected filters
     function filterImages() {
-        var orientationCheckboxes = document.querySelectorAll('.orientation-filter');
-        var selectedOrientations = [];
+        const orientationCheckboxes = document.querySelectorAll('.orientation-filter');
+        const selectedOrientations = [];
         orientationCheckboxes.forEach(cb => { if (cb.checked) selectedOrientations.push(cb.value); });
 
-        var focalLengthCheckboxes = document.querySelectorAll('.focal-length-filter');
-        var selectedFocalLengths = [];
+        const focalLengthCheckboxes = document.querySelectorAll('.focal-length-filter');
+        const selectedFocalLengths = [];
         focalLengthCheckboxes.forEach(cb => { if (cb.checked) selectedFocalLengths.push(cb.value); });
 
-        var dateCheckboxes = document.querySelectorAll('.date-filter');
-        var selectedDates = [];
+        const dateCheckboxes = document.querySelectorAll('.date-filter');
+        const selectedDates = [];
         dateCheckboxes.forEach(cb => { if (cb.checked) selectedDates.push(cb.value); });
 
-        var imageContainers = document.getElementsByClassName('image-container');
+        const imageContainers = document.getElementsByClassName('image-container');
 
-        for (var img of imageContainers) {
-            var imgOrientation = img.getAttribute('data-orientation');
-            var imgFocalLength = img.getAttribute('data-focal-length');
-            var imgDate = img.getAttribute('data-date');
-            var imgPath = img.getAttribute('data-full-image');
+        for (const img of imageContainers) {
+            const imgOrientation = img.getAttribute('data-orientation');
+            const imgFocalLength = img.getAttribute('data-focal-length');
+            const imgDate = img.getAttribute('data-date');
+            const imgPath = img.getAttribute('data-full-image');
 
-            var orientationMatch = selectedOrientations.length === 0 || selectedOrientations.includes(imgOrientation);
-            var focalMatch = selectedFocalLengths.length === 0 || selectedFocalLengths.includes(imgFocalLength.toString());
+            const orientationMatch = selectedOrientations.length === 0 || selectedOrientations.includes(imgOrientation);
+            const focalMatch = selectedFocalLengths.length === 0 || selectedFocalLengths.includes(imgFocalLength.toString());
 
             // Date matching: extract YYYY-MM-DD from ISO date string and check if it matches any selected day
-            var dateMatch = selectedDates.length === 0 || (imgDate && selectedDates.some(date => imgDate.startsWith(date)));
+            const dateMatch = selectedDates.length === 0 || (imgDate && selectedDates.some(date => imgDate.startsWith(date)));
 
             // Hidden state filtering
-            var hiddenMatch = true;
+            let hiddenMatch = true;
             if (isHiddenMode) {
                 // In hidden mode: ONLY show hidden images
                 hiddenMatch = isImageHidden(imgPath);
@@ -632,7 +632,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             // Selected state filtering
-            var selectedMatch = true;
+            let selectedMatch = true;
             if (isSelectedMode) {
                 // In selected mode: ONLY show selected images
                 selectedMatch = img.classList.contains('selected');
@@ -642,13 +642,13 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // Hide empty slates (slates with no visible images)
-        var slates = document.querySelectorAll('.slate');
+        const slates = document.querySelectorAll('.slate');
         slates.forEach(function(slate) {
-            var slateImages = slate.querySelectorAll('.image-container');
-            var hasVisibleImages = false;
+            const slateImages = slate.querySelectorAll('.image-container');
+            let hasVisibleImages = false;
 
             // Check if this slate has any visible images
-            for (var i = 0; i < slateImages.length; i++) {
+            for (let i = 0; i < slateImages.length; i++) {
                 if (slateImages[i].style.display !== 'none') {
                     hasVisibleImages = true;
                     break;
@@ -682,13 +682,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Functions to select/deselect all checkboxes based on a filter class
     function selectAllCheckboxes(filterClass) {
-        var checkboxes = document.querySelectorAll(filterClass);
+        const checkboxes = document.querySelectorAll(filterClass);
         checkboxes.forEach(cb => { cb.checked = true; });
         filterImages();
     }
 
     function deselectAllCheckboxes(filterClass) {
-        var checkboxes = document.querySelectorAll(filterClass);
+        const checkboxes = document.querySelectorAll(filterClass);
         checkboxes.forEach(cb => { cb.checked = false; });
         filterImages();
     }
@@ -712,7 +712,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Global Deselect All Photos
     function deselectAllPhotos() {
-        var checkboxes = document.querySelectorAll('.select-checkbox');
+        const checkboxes = document.querySelectorAll('.select-checkbox');
         checkboxes.forEach(cb => {
             cb.checked = false;
             cb.parentElement.classList.remove('selected');
@@ -749,13 +749,13 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    var orientationCheckboxes = document.querySelectorAll('.orientation-filter');
-    orientationCheckboxes.forEach(function(checkbox) {
+    const orientationFilterCheckboxes = document.querySelectorAll('.orientation-filter');
+    orientationFilterCheckboxes.forEach(function(checkbox) {
         checkbox.addEventListener('change', filterImages);
     });
 
-    var focalLengthCheckboxes = document.querySelectorAll('.focal-length-filter');
-    focalLengthCheckboxes.forEach(function(checkbox) {
+    const focalLengthFilterCheckboxes = document.querySelectorAll('.focal-length-filter');
+    focalLengthFilterCheckboxes.forEach(function(checkbox) {
         checkbox.addEventListener('change', filterImages);
     });
 
@@ -767,8 +767,8 @@ document.addEventListener('DOMContentLoaded', function() {
         deselectAllCheckboxes('.focal-length-filter');
     });
 
-    var dateCheckboxes = document.querySelectorAll('.date-filter');
-    dateCheckboxes.forEach(function(checkbox) {
+    const dateFilterCheckboxes = document.querySelectorAll('.date-filter');
+    dateFilterCheckboxes.forEach(function(checkbox) {
         checkbox.addEventListener('change', filterImages);
     });
 
@@ -781,11 +781,11 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Size slider functionality
-    var sizeSlider = document.getElementById('size-slider');
-    var sizeValue = document.getElementById('size-value');
+    const sizeSlider = document.getElementById('size-slider');
+    const sizeValue = document.getElementById('size-value');
 
     sizeSlider.addEventListener('input', function() {
-        var size = sizeSlider.value + 'px';
+        const size = sizeSlider.value + 'px';
         sizeValue.textContent = size;
         adjustImageSizes(size);
     });
@@ -797,31 +797,32 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.getElementById('export-to-clipboard').addEventListener('click', function() {
-        var imageContainers = document.getElementsByClassName('image-container');
-        var exportData = [];
-        var lastFolderPath = '';
-        var currentBasePath = '';
+        const imageContainers = document.getElementsByClassName('image-container');
+        const exportData = [];
+        let lastFolderPath = '';
+        let currentBasePath = '';
 
-        for (var container of imageContainers) {
-            var checkbox = container.querySelector('.select-checkbox');
+        for (const container of imageContainers) {
+            const checkbox = container.querySelector('.select-checkbox');
             if (checkbox && checkbox.checked) {
-                var imgElement = container.querySelector('img');
+                const imgElement = container.querySelector('img');
+                if (!imgElement) continue;  // Skip if no image element found
                 // Use original full path, not thumbnail
-                var imgPath = imgElement.getAttribute('data-src-full') || container.getAttribute('data-full-image') || imgElement.getAttribute('src');
-                var focalLength = container.getAttribute('data-focal-length');
+                const imgPath = imgElement.getAttribute('data-src-full') || container.getAttribute('data-full-image') || imgElement.getAttribute('src');
+                const focalLength = container.getAttribute('data-focal-length');
 
-                var focalLengthFormatted = parseFloat(focalLength);
+                let focalLengthFormatted = parseFloat(focalLength);
                 if (focalLengthFormatted % 1 === 0) {
                     focalLengthFormatted = focalLengthFormatted.toFixed(0);
                 }
 
-                var lastSlashIndex = imgPath.lastIndexOf('/');
-                var folderPath = imgPath.substring(0, lastSlashIndex);
-                var filename = imgPath.substring(lastSlashIndex + 1);
+                const lastSlashIndex = imgPath.lastIndexOf('/');
+                const folderPath = imgPath.substring(0, lastSlashIndex);
+                const filename = imgPath.substring(lastSlashIndex + 1);
 
                 // Extract base path up to /slates/ for this image
-                var imgBasePath = '';
-                var slatesIndex = imgPath.indexOf('/slates/');
+                let imgBasePath = '';
+                const slatesIndex = imgPath.indexOf('/slates/');
                 if (slatesIndex !== -1) {
                     imgBasePath = imgPath.substring(0, slatesIndex + 8); // +8 for '/slates/'
                 }
@@ -832,15 +833,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     currentBasePath = imgBasePath;
                 } else {
                     // Same base path - use relative format
-                    var relativePath = imgPath.substring(currentBasePath.length);
+                    const relativePath = imgPath.substring(currentBasePath.length);
 
                     // Check if it's the same folder as last time
                     if (folderPath === lastFolderPath) {
                         // Same folder - extract slate from relative path and output slate/subdirs/filename
-                        var slateMatch = relativePath.match(/^([A-Z][0-9]+[A-Z])\//);
+                        const slateMatch = relativePath.match(/^([A-Z][0-9]+[A-Z])\//);
                         if (slateMatch) {
-                            var slate = slateMatch[1];
-                            var pathAfterSlate = relativePath.substring(slate.length + 1);
+                            const slate = slateMatch[1];
+                            const pathAfterSlate = relativePath.substring(slate.length + 1);
                             exportData.push(slate + '/' + pathAfterSlate + '-' + focalLengthFormatted);
                         } else {
                             // Fallback to relative path if no slate found
@@ -861,7 +862,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        var exportText = exportData.join('\n');
+        const exportText = exportData.join('\n');
 
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(exportText).then(function() {
@@ -870,7 +871,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 showNotification('Failed to copy data: ' + err, true);
             });
         } else {
-            var textarea = document.createElement('textarea');
+            // Fallback for older browsers
+            const textarea = document.createElement('textarea');
             textarea.value = exportText;
             document.body.appendChild(textarea);
             textarea.select();
@@ -988,19 +990,44 @@ document.addEventListener('DOMContentLoaded', function() {
     // ===== EVENT DELEGATION FOR IMAGE CLICKS (P0 Performance Fix) =====
     // Instead of 500+ individual listeners, use single delegated listener on document
     // Memory: ~50KB saved, initialization: ~95ms faster on 500 images
-    // Enhanced with shift-select support for range selection
+    // Direct state manipulation to avoid double-processing from synthetic events
     document.addEventListener('click', function(e) {
         if (e.target.matches('.image-container img')) {
             const img = e.target;
             const checkbox = img.parentElement.querySelector('.select-checkbox');
             if (checkbox) {
-                // Create a click event with shift key state preserved
-                const clickEvent = new MouseEvent('click', {
-                    bubbles: true,
-                    cancelable: true,
-                    shiftKey: e.shiftKey
-                });
-                checkbox.dispatchEvent(clickEvent);
+                // Handle shift-click for range selection
+                if (e.shiftKey && lastSelectedIndex !== -1) {
+                    const allCheckboxes = Array.from(document.querySelectorAll('.select-checkbox'));
+                    const visibleCheckboxes = allCheckboxes.filter(cb => {
+                        return cb.parentElement.style.display !== 'none';
+                    });
+                    const currentIndex = visibleCheckboxes.indexOf(checkbox);
+
+                    if (currentIndex !== -1) {
+                        const firstCheckbox = visibleCheckboxes[lastSelectedIndex];
+                        const shouldCheck = firstCheckbox ? firstCheckbox.checked : true;
+                        selectRange(lastSelectedIndex, currentIndex, shouldCheck);
+                    }
+                } else {
+                    // Direct toggle - no synthetic event dispatch
+                    checkbox.checked = !checkbox.checked;
+                    // Update visual state
+                    if (checkbox.checked) {
+                        checkbox.parentElement.classList.add('selected');
+                    } else {
+                        checkbox.parentElement.classList.remove('selected');
+                    }
+                    // Update anchor for shift-select
+                    const allCheckboxes = Array.from(document.querySelectorAll('.select-checkbox'));
+                    const visibleCheckboxes = allCheckboxes.filter(cb => {
+                        return cb.parentElement.style.display !== 'none';
+                    });
+                    lastSelectedIndex = visibleCheckboxes.indexOf(checkbox);
+                    // Save and update
+                    debouncedSave();
+                    updateCounts();
+                }
             }
         }
     });
@@ -1025,6 +1052,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function invalidateVisibleImagesCache() {
         visibleImagesCache = null;
+        lastSelectedIndex = -1;  // Reset shift-select anchor when filters change
     }
 
     // Function to get all currently visible images (with caching)
@@ -1134,6 +1162,15 @@ document.addEventListener('DOMContentLoaded', function() {
         let metadataHTML = `<strong>${filename}</strong>`;
         metadataHTML += focalLength ? `<br>Focal Length: ${focalLength}mm` : '';
 
+        // Add error handler for failed image loads
+        modalImg.onerror = function() {
+            showNotification('Failed to load full-size image', true);
+            modalCaption.innerHTML = metadataHTML + '<br><em style="color: #ff6b6b;">(Image failed to load)</em>';
+        };
+        modalImg.onload = function() {
+            // Clear any previous error styling
+            modalImg.style.opacity = '1';
+        };
         modalImg.src = fullSrc;
         modalImg.alt = imgAlt;
         modalCaption.innerHTML = metadataHTML;
@@ -1198,17 +1235,38 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     hideCurrentImage();
                 }
+            } else if (event.key === 'Tab') {
+                // Focus trap - keep focus within modal
+                const focusableElements = modal.querySelectorAll(
+                    'button, [tabindex]:not([tabindex="-1"]), input[type="checkbox"], .close-button, .prev-button, .next-button'
+                );
+                const focusableArray = Array.from(focusableElements).filter(el => {
+                    return el.offsetParent !== null; // Only visible elements
+                });
+
+                if (focusableArray.length === 0) return;
+
+                const firstEl = focusableArray[0];
+                const lastEl = focusableArray[focusableArray.length - 1];
+
+                if (event.shiftKey && document.activeElement === firstEl) {
+                    event.preventDefault();
+                    lastEl.focus();
+                } else if (!event.shiftKey && document.activeElement === lastEl) {
+                    event.preventDefault();
+                    firstEl.focus();
+                }
             }
         }
     });
 
     // Select/Deselect all within a slate
     function selectAllInSlate(slateElement) {
-        var containers = slateElement.querySelectorAll('.image-container');
+        const containers = slateElement.querySelectorAll('.image-container');
         containers.forEach(function(container) {
             // Only select if container is visible
             if (container.style.display !== 'none') {
-                var checkbox = container.querySelector('.select-checkbox');
+                const checkbox = container.querySelector('.select-checkbox');
                 if (checkbox) {
                     checkbox.checked = true;
                     container.classList.add('selected');
@@ -1220,7 +1278,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function deselectAllInSlate(slateElement) {
-        var checkboxes = slateElement.querySelectorAll('.select-checkbox');
+        const checkboxes = slateElement.querySelectorAll('.select-checkbox');
         checkboxes.forEach(function(checkbox) {
             checkbox.checked = false;
             checkbox.parentElement.classList.remove('selected');
@@ -1229,18 +1287,18 @@ document.addEventListener('DOMContentLoaded', function() {
         updateCounts(); // Update status bar
     }
 
-    var selectAllSlateButtons = document.querySelectorAll('.select-all-slate');
+    const selectAllSlateButtons = document.querySelectorAll('.select-all-slate');
     selectAllSlateButtons.forEach(function(button) {
         button.addEventListener('click', function() {
-            var slateDiv = this.closest('.slate');
+            const slateDiv = this.closest('.slate');
             selectAllInSlate(slateDiv);
         });
     });
 
-    var deselectAllSlateButtons = document.querySelectorAll('.deselect-all-slate');
+    const deselectAllSlateButtons = document.querySelectorAll('.deselect-all-slate');
     deselectAllSlateButtons.forEach(function(button) {
         button.addEventListener('click', function() {
-            var slateDiv = this.closest('.slate');
+            const slateDiv = this.closest('.slate');
             deselectAllInSlate(slateDiv);
         });
     });
@@ -1250,6 +1308,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (allVisibleImages.length === 0) return;
 
         const image = allVisibleImages[currentImageIndex];
+        if (!image || !image.parentElement) return;  // Null check for safety
+
         const imageContainer = image.parentElement;
         const galleryCheckbox = imageContainer.querySelector('.select-checkbox');
         if (galleryCheckbox) {
@@ -1287,8 +1347,10 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeGallery();
 
     // Setup Intersection Observer for progressive image loading
-    {% if lazy_loading %}
-    if ('IntersectionObserver' in window) {
+    // Configuration is passed via data attribute to avoid inline Jinja in JS
+    const lazyLoadingEnabled = document.body.dataset.lazyLoading === 'true';
+
+    if (lazyLoadingEnabled && 'IntersectionObserver' in window) {
         const imageObserver = new IntersectionObserver((entries, observer) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
@@ -1342,20 +1404,19 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             imageObserver.observe(img);
         });
-    }
-    {% else %}
-    // When lazy loading is disabled, all images load immediately
-    // Just set loaded class for all images once they're loaded
-    document.querySelectorAll('.images img').forEach(img => {
-        if (img.complete) {
-            img.classList.add('loaded');
-        } else {
-            img.onload = () => {
+    } else {
+        // When lazy loading is disabled or IntersectionObserver unavailable,
+        // all images load immediately - just set loaded class once they're loaded
+        document.querySelectorAll('.images img').forEach(img => {
+            if (img.complete) {
                 img.classList.add('loaded');
-            };
-        }
-    });
-    {% endif %}
+            } else {
+                img.onload = () => {
+                    img.classList.add('loaded');
+                };
+            }
+        });
+    }
 
     // ===== DEBOUNCED RESIZE HANDLER (P1 Performance Fix) =====
     // Prevents excessive displayImage() calls during window resize
