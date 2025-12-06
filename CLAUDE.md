@@ -55,6 +55,20 @@ SlateGallery is a PyQt6-based photo gallery generator that:
 - **UI**: Always-blue button for easy distinction from other controls
 - **Use Case**: Focus on specific image selections during review workflow
 
+### Parallel Slate Processing (2025-12)
+- **Feature**: Process multiple slates in parallel for 2-4x speedup
+- **Implementation**: Concurrent slate processing with proper thread management
+- **UI Enhancement**: Image count displayed per slate in GUI list
+
+### Unknown Focal Length Filter (2025-12)
+- **Feature**: Filter images that have no focal length EXIF data
+- **Use Case**: Quickly identify images missing metadata
+
+### SelectableListWidget (2025-12)
+- **Feature**: Consistent selection behavior using standard Qt patterns
+- **Behavior**: Ctrl+click to toggle, normal click sets anchor for Shift-select
+- **Fix**: Resolved erratic slate selection issues
+
 ## Code Quality Tools
 
 ### Linting Setup
@@ -88,24 +102,24 @@ basedpyright src/      # Type checking
 - 🟦 **JAVASCRIPT_TESTING.md** - JavaScript/HTML template testing guide (NEW!)
 
 ### Python Test Suite Overview
-- **188 total tests** covering major functionality and real-world scenarios
+- **225 total tests** covering major functionality and real-world scenarios
 - **Test framework**: pytest with pytest-qt for Qt components
-- **Current coverage**: 13% overall (174/1,377 lines)
-  - cache_manager: 32%
-  - gallery_generator: 36%
-  - threading: 13%
-  - image_processor: 11%
-  - config_manager: 12%
+- **Current coverage**: 42% overall (828/1,963 lines)
+  - image_processor: 96%
+  - gallery_generator: 93%
+  - config_manager: 92%
+  - cache_manager: 66%
+  - threading: 35%
   - main UI: 0% (typical for Qt UI code)
 - **Key test files**:
   - `test_integration_realistic.py` - Real-world integration tests without mocking
   - `test_performance_benchmark.py` - Performance benchmarking suite
   - `test_threading.py` - Thread lifecycle and signal tests
 
-### JavaScript Test Suite Overview (NEW!)
-- **99 total tests** covering gallery template frontend functionality
+### JavaScript Test Suite Overview
+- **330 total tests** covering gallery template frontend functionality
 - **Test framework**: Mocha + Chai + Sinon (HTML-based, CDN delivery)
-- **Current coverage**: Modal (100%), Events (100%), Persistence (95%), Empty Slate Hiding (100%)
+- **Current coverage**: Modal, Events, Persistence, Empty Slate Hiding, Size Slider, Filters, Notifications, Hidden Images, Selection Range
 - **Zero installation required**: Open `tests/gallery/gallery_tests.html` in browser
 - **Key features tested**:
   - Modal functionality (open, navigate, close with keyboard)
@@ -157,7 +171,7 @@ cd tests/gallery
 ./run_tests.sh headless   # CI/CD headless mode
 ```
 
-**Expected Output**: `99 passing (1.3s)` - All frontend tests pass
+**Expected Output**: `330 passing` - All frontend tests pass
 
 ### Qt Testing in Headless Environments
 
@@ -315,7 +329,7 @@ For GitHub Actions or similar:
 1. **Always run linting** after making code changes: `ruff check src/ --fix && basedpyright src/`
 2. **Test in headless mode** if no display available: use `xvfb-run` or `./run_tests.sh`
 3. **Testing documentation**: Comprehensive guides available in TESTING_BEST_PRACTICES.md and THREADING_ERROR_TESTS_GUIDE.md
-4. **Coverage gaps**: Priority #1 is threading error tests (44% → 60% coverage gain, 2-4 hours)
+4. **Coverage**: 42% overall - threading (35%) and main UI (0%) are primary gaps
 5. **Check for macOS files**: Remember to filter `._*` files when processing images
 6. **Thread safety**: Always properly cleanup Qt threads to prevent crashes
 7. **Config changes**: Remember config now returns 5 values including thumbnail and lazy loading preferences
@@ -324,4 +338,4 @@ For GitHub Actions or similar:
 10. **Worker optimization**: Worker count is now 2x CPU cores for I/O operations (up to 16 workers)
 11. **Type safety**: Project uses basedpyright in "recommended" mode with 0 errors, 251 warnings (production-ready)
 
-Last updated: 2025-12-06 (branch-switch hook)
+Last updated: 2025-12-06 (documentation sync)
