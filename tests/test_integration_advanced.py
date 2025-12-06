@@ -262,17 +262,17 @@ class TestMixedImageFormats:
                 'files': created_files
             }
 
-    def test_process_mixed_formats(self, mixed_format_gallery, qtbot):
+    def test_process_mixed_formats(self, mixed_format_gallery, qtbot, thread_cleanup):
         """Test that all image formats are processed correctly."""
         cache_manager = ImprovedCacheManager(
             base_dir=str(mixed_format_gallery['base_path'] / 'cache')
         )
 
         # Scan directory
-        scan_thread = ScanThread(
+        scan_thread = thread_cleanup(ScanThread(
             str(mixed_format_gallery['images_dir']),
             cache_manager
-        )
+        ))
 
         with qtbot.waitSignal(scan_thread.scan_complete, timeout=10000) as blocker:
             scan_thread.start()
@@ -289,7 +289,7 @@ class TestMixedImageFormats:
         template = mixed_format_gallery['base_path'] / 'template.html'
         template.write_text('<html>{% for s in gallery %}{{ s.slate }}{% endfor %}</html>')
 
-        thread = GenerateGalleryThread(
+        thread = thread_cleanup(GenerateGalleryThread(
             selected_slates=list(slates_dict.keys()),
             slates_dict=slates_dict,
             cache_manager=cache_manager,
@@ -299,7 +299,7 @@ class TestMixedImageFormats:
             generate_thumbnails=True,
             thumbnail_size=600,
             lazy_loading=True
-        )
+        ))
 
         with qtbot.waitSignal(thread.gallery_complete, timeout=30000) as blocker:
             thread.start()
@@ -318,7 +318,7 @@ class TestMixedImageFormats:
 class TestErrorRecovery:
     """Test system recovery from various error conditions."""
 
-    def test_corrupted_image_handling(self, tmp_path, qtbot):
+    def test_corrupted_image_handling(self, tmp_path, qtbot, thread_cleanup):
         """Test that corrupted images don't crash the system."""
         images_dir = tmp_path / 'corrupted'
         images_dir.mkdir()
@@ -343,7 +343,7 @@ class TestErrorRecovery:
         cache_manager = ImprovedCacheManager(base_dir=str(tmp_path / 'cache'))
 
         # Should handle corrupted images gracefully
-        scan_thread = ScanThread(str(images_dir), cache_manager)
+        scan_thread = thread_cleanup(ScanThread(str(images_dir), cache_manager))
 
         with qtbot.waitSignal(scan_thread.scan_complete, timeout=10000) as blocker:
             scan_thread.start()
@@ -354,7 +354,7 @@ class TestErrorRecovery:
         assert len(slates_dict) > 0
         # Should have found all files (even corrupted ones in the scan)
         total_images = sum(len(slate['images']) for slate in slates_dict.values())
-        assert total_images >= 3  # At least the good images
+        assert total_images >= 3  # At least the good images  # At least the good images
 
     def test_permission_denied_recovery(self, tmp_path, monkeypatch):
         """Test handling of permission denied errors."""
@@ -460,7 +460,7 @@ class TestErrorRecovery:
 class TestEndToEndWorkflow:
     """Test complete workflows from start to finish."""
 
-    def test_complete_gallery_generation_workflow(self, tmp_path, qtbot, monkeypatch):
+    def test_complete_gallery_generation_workflow(self, tmp_path, qtbot, monkeypatch, thread_cleanup):
         """Test the complete workflow from scan to gallery generation."""
         # Setup environment
         photos_dir = tmp_path / 'MyPhotos'
@@ -515,7 +515,7 @@ class TestEndToEndWorkflow:
 
         # Step 1: Scan directories
         cache_manager = ImprovedCacheManager(base_dir=str(tmp_path / 'cache'))
-        scan_thread = ScanThread(str(photos_dir), cache_manager)
+        scan_thread = thread_cleanup(ScanThread(str(photos_dir), cache_manager))
 
         with qtbot.waitSignal(scan_thread.scan_complete, timeout=10000) as blocker:
             scan_thread.start()
@@ -552,7 +552,7 @@ class TestEndToEndWorkflow:
 </body>
 </html>''')
 
-        gallery_thread = GenerateGalleryThread(
+        gallery_thread = thread_cleanup(GenerateGalleryThread(
             selected_slates=['Vacation2024', 'Family'],
             slates_dict=slates_dict,
             cache_manager=cache_manager,
@@ -562,7 +562,7 @@ class TestEndToEndWorkflow:
             generate_thumbnails=True,
             thumbnail_size=800,
             lazy_loading=True
-        )
+        ))
 
         with qtbot.waitSignal(gallery_thread.gallery_complete, timeout=30000) as blocker:
             gallery_thread.start()
@@ -614,7 +614,7 @@ class TestEndToEndWorkflow:
 class TestCacheInvalidation:
     """Test cache invalidation and updates."""
 
-    def test_cache_updates_on_file_changes(self, tmp_path, qtbot):
+    def test_cache_updates_on_file_changes(self, tmp_path, qtbot, thread_cleanup):
         """Test that cache properly updates when files are added/removed."""
         images_dir = tmp_path / 'dynamic_images'
         images_dir.mkdir()
@@ -626,7 +626,7 @@ class TestCacheInvalidation:
             img.save(images_dir / f'initial_{i}.jpg')
 
         # First scan
-        scan_thread = ScanThread(str(images_dir), cache_manager)
+        scan_thread = thread_cleanup(ScanThread(str(images_dir), cache_manager))
         with qtbot.waitSignal(scan_thread.scan_complete, timeout=10000) as blocker:
             scan_thread.start()
 
@@ -645,13 +645,13 @@ class TestCacheInvalidation:
             cache_file.unlink()
 
         # Rescan
-        scan_thread2 = ScanThread(str(images_dir), cache_manager)
+        scan_thread2 = thread_cleanup(ScanThread(str(images_dir), cache_manager))
         with qtbot.waitSignal(scan_thread2.scan_complete, timeout=10000) as blocker:
             scan_thread2.start()
 
         slates2, _ = blocker.args
         new_count = sum(len(s['images']) for s in slates2.values())
-        assert new_count == 5  # 3 initial + 2 added
+        assert new_count == 5  # 3 initial + 2 added  # 3 initial + 2 added
 
 
 # Run specific test categories

@@ -278,3 +278,144 @@ class TestConfigManagerEdgeCases:
         # Verify Settings section was created
         content = config_file.read_text()
         assert "[Settings]" in content
+
+
+class TestConfigManagerJSONSerialization:
+    """Test JSON serialization for list values to handle pipe characters in paths."""
+
+    @pytest.fixture(autouse=True)
+    def setup_config_env(self, tmp_path, monkeypatch):
+        """Set up environment for config file testing."""
+        config_dir = tmp_path / '.slate_gallery'
+        config_dir.mkdir()
+        config_file = config_dir / 'config.ini'
+        monkeypatch.setattr('src.core.config_manager.CONFIG_FILE', str(config_file))
+        yield config_file
+
+    def test_save_config_pipe_in_path(self, setup_config_env):
+        """Test that paths containing pipe characters are handled correctly."""
+        # Pipe character was previously used as delimiter - this would break
+        pipe_path = "/path/with|pipe/character"
+        paths_with_pipes = [pipe_path, "/another|path|multiple"]
+
+        config = GalleryConfig(
+            current_slate_dir=pipe_path,
+            slate_dirs=paths_with_pipes,
+            selected_slate_dirs=paths_with_pipes
+        )
+        save_config(config)
+
+        # Load and verify
+        loaded_config = load_config()
+
+        assert loaded_config.current_slate_dir == pipe_path
+        assert loaded_config.slate_dirs == paths_with_pipes
+        assert loaded_config.selected_slate_dirs == paths_with_pipes
+
+    def test_backwards_compatibility_pipe_format(self, setup_config_env):
+        """Test that legacy pipe-delimited format still loads correctly."""
+        # Write config file in legacy format (pipe-delimited)
+        legacy_content = '''[Settings]
+current_slate_dir = /test/dir
+slate_dirs = /path/one|/path/two|/path/three
+selected_slate_dirs = /path/one|/path/two
+generate_thumbnails = True
+thumbnail_size = 800
+lazy_loading = True
+exclude_patterns =
+'''
+        setup_config_env.write_text(legacy_content)
+
+        # Load should still work
+        loaded_config = load_config()
+
+        assert loaded_config.current_slate_dir == "/test/dir"
+        assert loaded_config.slate_dirs == ["/path/one", "/path/two", "/path/three"]
+        assert loaded_config.selected_slate_dirs == ["/path/one", "/path/two"]
+        assert loaded_config.generate_thumbnails is True
+        assert loaded_config.thumbnail_size == 800
+
+    def test_json_format_written_on_save(self, setup_config_env):
+        """Test that new format uses JSON for list values."""
+        config = GalleryConfig(
+            current_slate_dir="/test",
+            slate_dirs=["/path/one", "/path/two"],
+            selected_slate_dirs=["/path/one"]
+        )
+        save_config(config)
+
+        # Read raw file content
+        content = setup_config_env.read_text()
+
+        # Should use JSON format (starts with [ and ends with ])
+        assert '["' in content  # JSON array notation
+        assert '"]' in content
+
+        # Should NOT use pipe delimiter in the actual content
+        # (Note: checking that pipes aren't used as delimiters, not that they don't appear in paths)
+        lines = content.split('\n')
+        for line in lines:
+            if line.startswith('slate_dirs =') or line.startswith('selected_slate_dirs ='):
+                # The value should be valid JSON
+                value = line.split('=', 1)[1].strip()
+                import json
+                parsed = json.loads(value)
+                assert isinstance(parsed, list)
+
+    def test_mixed_special_characters(self, setup_config_env):
+        """Test paths with multiple special characters including pipes."""
+        complex_paths = [
+            "/path|with|pipes/and spaces/and-dashes",
+            "/café|naïve|日本語/path",
+            '/quotes"and\'apostrophes',
+            "/backslash\\path|mixed"
+        ]
+
+        config = GalleryConfig(
+            current_slate_dir=complex_paths[0],
+            slate_dirs=complex_paths,
+            selected_slate_dirs=complex_paths
+        )
+        save_config(config)
+
+        loaded_config = load_config()
+
+        assert loaded_config.slate_dirs == complex_paths
+        assert loaded_config.selected_slate_dirs == complex_paths
+
+    def test_empty_list_json_format(self, setup_config_env):
+        """Test that empty lists serialize correctly."""
+        config = GalleryConfig(
+            current_slate_dir="",
+            slate_dirs=[],
+            selected_slate_dirs=[]
+        )
+        save_config(config)
+
+        loaded_config = load_config()
+
+        assert loaded_config.slate_dirs == []
+        assert loaded_config.selected_slate_dirs == []
+
+    def test_migration_from_legacy_to_json(self, setup_config_env):
+        """Test that loading legacy format and saving migrates to JSON format."""
+        # Write legacy format
+        legacy_content = '''[Settings]
+current_slate_dir = /test
+slate_dirs = /path/one|/path/two
+selected_slate_dirs = /path/one
+generate_thumbnails = False
+thumbnail_size = 600
+lazy_loading = True
+exclude_patterns =
+'''
+        setup_config_env.write_text(legacy_content)
+
+        # Load and save
+        loaded_config = load_config()
+        save_config(loaded_config)
+
+        # Verify new format
+        content = setup_config_env.read_text()
+        assert '["' in content  # JSON format
+        assert '["/path/one", "/path/two"]' in content or '["/path/one","/path/two"]' in content.replace(' ', '')

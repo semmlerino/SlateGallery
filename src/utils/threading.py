@@ -127,8 +127,6 @@ class ScanThread(QtCore.QThread):
     @override
     def run(self) -> None:
         try:
-            from concurrent.futures import ProcessPoolExecutor, as_completed
-
             from core.image_processor import scan_directories
 
             logger.info(f"Starting directory scan for {len(self.root_dirs)} root directory(ies)...")
@@ -149,7 +147,7 @@ class ScanThread(QtCore.QThread):
                 merged_slates: dict[str, dict[str, list[str]]] = {}
                 completed_dirs = 0
 
-                with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     # Submit all scan tasks
                     future_to_dir = {
                         executor.submit(_scan_single_root_dir, root_dir, self.exclude_patterns): root_dir

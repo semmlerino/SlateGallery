@@ -5,6 +5,7 @@ Uses lazy initialization to avoid crashes in read-only environments.
 
 import codecs
 import configparser
+import json
 import os
 import traceback
 from dataclasses import dataclass, field
@@ -32,6 +33,41 @@ CACHE_DIR = os.path.expanduser("~/.slate_gallery/cache")
 # Module-level state for lazy initialization
 _directories_initialized = False
 _directories_error: Optional[str] = None
+
+
+def _parse_list_value(value: str) -> list[str]:
+    """Parse list value, supporting both JSON and legacy pipe-delimited formats.
+
+    Args:
+        value: String value from config file
+
+    Returns:
+        List of strings parsed from the value
+    """
+    if not value:
+        return []
+    value_stripped = value.strip()
+    # Try JSON format first (new format)
+    if value_stripped.startswith('[') and value_stripped.endswith(']'):
+        try:
+            parsed: list[str] = json.loads(value_stripped)  # pyright: ignore[reportAny]
+            return parsed
+        except (json.JSONDecodeError, TypeError):
+            pass  # Fall through to legacy format
+    # Legacy pipe-delimited format
+    return [item for item in value.split('|') if item]
+
+
+def _serialize_list_value(items: list[str]) -> str:
+    """Serialize list to JSON format for safe storage.
+
+    Args:
+        items: List of strings to serialize
+
+    Returns:
+        JSON string representation of the list
+    """
+    return json.dumps(items, ensure_ascii=False)
 
 
 def _ensure_directories() -> bool:
@@ -87,16 +123,14 @@ def load_config() -> GalleryConfig:
 
             try:
                 slate_dirs_str = config.get("Settings", "slate_dirs")
-                result.slate_dirs = slate_dirs_str.split("|") if slate_dirs_str else []
+                result.slate_dirs = _parse_list_value(slate_dirs_str)
                 logger.info(f"Loaded slate_dirs from config: {result.slate_dirs}")
             except (configparser.NoSectionError, configparser.NoOptionError):
                 logger.warning("slate_dirs not found in config.")
 
             try:
                 selected_slate_dirs_str = config.get("Settings", "selected_slate_dirs")
-                selected_dirs = selected_slate_dirs_str.split("|") if selected_slate_dirs_str else []
-                # Filter out empty strings
-                result.selected_slate_dirs = [d for d in selected_dirs if d]
+                result.selected_slate_dirs = _parse_list_value(selected_slate_dirs_str)
                 logger.info(f"Loaded selected_slate_dirs from config: {result.selected_slate_dirs}")
             except (configparser.NoSectionError, configparser.NoOptionError):
                 # Backwards compatibility: default to current_slate_dir if it exists
@@ -159,8 +193,8 @@ def save_config(cfg: GalleryConfig) -> None:
     if not config.has_section("Settings"):
         config.add_section("Settings")
     config.set("Settings", "current_slate_dir", cfg.current_slate_dir)
-    config.set("Settings", "slate_dirs", "|".join(cfg.slate_dirs))
-    config.set("Settings", "selected_slate_dirs", "|".join(cfg.selected_slate_dirs))
+    config.set("Settings", "slate_dirs", _serialize_list_value(cfg.slate_dirs))
+    config.set("Settings", "selected_slate_dirs", _serialize_list_value(cfg.selected_slate_dirs))
     config.set("Settings", "generate_thumbnails", str(cfg.generate_thumbnails))
     config.set("Settings", "thumbnail_size", str(cfg.thumbnail_size))
     config.set("Settings", "lazy_loading", str(cfg.lazy_loading))

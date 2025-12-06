@@ -34,3 +34,39 @@ def test_data_dir():
         (test_dir / "config").mkdir()
 
         yield test_dir
+
+
+@pytest.fixture
+def thread_cleanup(qtbot):  # type: ignore[no-untyped-def]
+    """Register Qt threads for automatic cleanup after test.
+
+    Usage:
+        def test_example(thread_cleanup):
+            thread = thread_cleanup(ScanThread(...))
+            thread.start()
+            # Thread will be cleaned up automatically after test
+    """
+    from typing import Any
+
+    threads: list[Any] = []
+
+    def register(thread: Any) -> Any:
+        """Register a thread for cleanup."""
+        threads.append(thread)
+        return thread
+
+    yield register
+
+    # Cleanup all registered threads (reverse order for safety)
+    for thread in reversed(threads):
+        if thread.isRunning():
+            thread.quit()
+            if not thread.wait(1000):  # 1 second timeout
+                thread.terminate()
+                thread.wait()
+
+    # Process pending Qt events to ensure clean state
+    from PySide6.QtCore import QCoreApplication
+    app = QCoreApplication.instance()
+    if app:
+        app.processEvents()
