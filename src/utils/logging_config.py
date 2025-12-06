@@ -1,4 +1,8 @@
-"""Logging configuration for SlateGallery - extracted identically from original."""
+"""Logging configuration for SlateGallery - extracted identically from original.
+
+Uses lazy initialization to avoid crashes in read-only environments.
+Uses a library-local logger instead of the root logger to avoid polluting host apps.
+"""
 
 import logging
 import logging.handlers
@@ -6,7 +10,7 @@ import os
 import traceback
 from collections.abc import Callable
 from functools import wraps
-from typing import TypeVar
+from typing import Optional, TypeVar
 
 # Use typing_extensions for ParamSpec (Python 3.9 compatibility)
 from typing_extensions import ParamSpec
@@ -15,30 +19,60 @@ from typing_extensions import ParamSpec
 
 LOG_FILE = os.path.expanduser("~/.slate_gallery/gallery_generator.log")
 
-log_dir = os.path.dirname(LOG_FILE)
-if not os.path.isdir(log_dir):
-    os.makedirs(log_dir)
+# Library-local logger (NOT root logger) to avoid polluting host applications
+logger = logging.getLogger("slate_gallery")
 
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)  # Changed from DEBUG to reduce log spam
-
-file_handler = logging.handlers.RotatingFileHandler(LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5)
-file_handler.setLevel(logging.INFO)  # Changed from DEBUG to reduce log spam
+# Module-level state for lazy initialization
+_handlers_initialized = False
+_initialization_error: Optional[str] = None
 
 
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
+def ensure_handlers_initialized() -> None:
+    """Lazily initialize logging handlers on first use.
 
-formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(funcName)s - %(message)s")
-file_handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
+    Thread-safe initialization that:
+    - Creates log directory if needed (with error handling)
+    - Sets up file and console handlers
+    - Gracefully falls back to console-only on permission errors
+    """
+    global _handlers_initialized, _initialization_error
 
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
+    if _handlers_initialized:
+        return
 
-# Suppress verbose third-party library logging
-logging.getLogger('piexif').setLevel(logging.WARNING)  # Suppress EXIF tag spam
-logging.getLogger('PIL').setLevel(logging.WARNING)  # Suppress PIL debug messages
+    # Set base level
+    logger.setLevel(logging.INFO)
+
+    # Formatter for all handlers
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(funcName)s - %(message)s")
+
+    # Always add console handler (no filesystem access needed)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    # Try to add file handler (may fail in read-only environments)
+    try:
+        log_dir = os.path.dirname(LOG_FILE)
+        if log_dir and not os.path.isdir(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+
+        file_handler = logging.handlers.RotatingFileHandler(
+            LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=5
+        )
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    except (OSError, PermissionError) as e:
+        _initialization_error = f"File logging disabled: {e}"
+        # Console handler is already added, continue without file logging
+
+    # Suppress verbose third-party library logging
+    logging.getLogger("piexif").setLevel(logging.WARNING)
+    logging.getLogger("PIL").setLevel(logging.WARNING)
+
+    _handlers_initialized = True
 
 # ----------------------------- Logging Decorator -----------------------------
 
@@ -59,6 +93,7 @@ def log_function(func: Callable[P, R]) -> Callable[P, R]:
 
     @wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        ensure_handlers_initialized()  # Lazy initialization on first use
         logger.debug(f"Entering function: {func.__name__}")
         # Avoid logging arguments during intensive tasks
         # logger.debug("Arguments: args={}, kwargs={}".format(args, kwargs))

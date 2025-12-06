@@ -1,12 +1,16 @@
-"""Configuration handling - extracted identically from original SlateGallery.py"""
+"""Configuration handling - extracted identically from original SlateGallery.py
+
+Uses lazy initialization to avoid crashes in read-only environments.
+"""
 
 import codecs
 import configparser
 import os
 import traceback
 from dataclasses import dataclass, field
+from typing import Optional
 
-from utils.logging_config import log_function, logger
+from utils.logging_config import ensure_handlers_initialized, log_function, logger
 
 
 @dataclass
@@ -25,12 +29,39 @@ class GalleryConfig:
 CONFIG_FILE = os.path.expanduser("~/.slate_gallery/config.ini")
 CACHE_DIR = os.path.expanduser("~/.slate_gallery/cache")
 
-config_dir = os.path.dirname(CONFIG_FILE)
-if not os.path.isdir(config_dir):
-    os.makedirs(config_dir)
+# Module-level state for lazy initialization
+_directories_initialized = False
+_directories_error: Optional[str] = None
 
-if not os.path.isdir(CACHE_DIR):
-    os.makedirs(CACHE_DIR)
+
+def _ensure_directories() -> bool:
+    """Lazily create required directories on first use.
+
+    Returns:
+        True if directories are accessible, False otherwise
+    """
+    global _directories_initialized, _directories_error
+
+    if _directories_initialized:
+        return _directories_error is None
+
+    ensure_handlers_initialized()  # Ensure logging is available
+
+    try:
+        config_dir = os.path.dirname(CONFIG_FILE)
+        if config_dir and not os.path.isdir(config_dir):
+            os.makedirs(config_dir, exist_ok=True)
+
+        if not os.path.isdir(CACHE_DIR):
+            os.makedirs(CACHE_DIR, exist_ok=True)
+
+        _directories_error = None
+    except (OSError, PermissionError) as e:
+        _directories_error = str(e)
+        logger.warning(f"Could not create config directories: {e}")
+
+    _directories_initialized = True
+    return _directories_error is None
 
 
 @log_function
@@ -40,6 +71,8 @@ def load_config() -> GalleryConfig:
     Returns:
         GalleryConfig dataclass with all settings
     """
+    _ensure_directories()  # Lazy initialization (tolerates failures)
+
     config = configparser.ConfigParser()
     result = GalleryConfig()
     if os.path.exists(CONFIG_FILE):
@@ -118,6 +151,10 @@ def save_config(cfg: GalleryConfig) -> None:
     Args:
         cfg: GalleryConfig dataclass with all settings
     """
+    if not _ensure_directories():
+        logger.error(f"Cannot save config: {_directories_error}")
+        return  # Graceful failure when directories can't be created
+
     config = configparser.ConfigParser()
     if not config.has_section("Settings"):
         config.add_section("Settings")

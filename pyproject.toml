@@ -35,12 +35,23 @@ target-version = "py39"
 exclude = [".git", "__pycache__", "venv", ".venv", "build", "dist"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP"]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "W",      # pycodestyle warnings
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # bugbear (likely bugs)
+    "SIM",    # simplify
+    "RUF",    # ruff-specific
+    "PIE",    # misc linting
+    "C4",     # comprehension improvements
+]
 ignore = ["E501"]
 
 [tool.basedpyright]
 pythonVersion = "3.9"
-typeCheckingMode = "recommended"
+typeCheckingMode = "strict"
 include = ["src", "run_slate_gallery.py"]
 exclude = [".git", "venv", ".venv", "archive", "__pycache__"]
 venvPath = "."
@@ -52,6 +63,7 @@ reportExplicitAny = "warning"
 reportAny = "warning"
 reportAttributeAccessIssue = "warning"
 reportUninitializedInstanceVariable = "warning"
+reportOptionalMemberAccess = "warning"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

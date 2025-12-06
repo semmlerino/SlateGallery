@@ -135,15 +135,15 @@ def scan_directories(root_dir: str) -> dict[str, dict[str, list[str]]]:
 
 
 __all__ = [
+    "DateData",
+    "FocalLengthData",
+    "ImageData",
+    "ImprovedCacheManager",
+    "SlateData",
+    "generate_html_gallery",
     "get_exif_data",
     "get_orientation",
-    "scan_directories",
     "load_config",
     "save_config",
-    "ImprovedCacheManager",
-    "generate_html_gallery",
-    "ImageData",
-    "SlateData",
-    "FocalLengthData",
-    "DateData",
+    "scan_directories",
 ]

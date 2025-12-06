@@ -4,7 +4,7 @@ import hashlib
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Union, cast
+from typing import Any, Optional, Union
 
 from PIL import Image
 from PIL.ExifTags import IFD, TAGS
@@ -64,12 +64,13 @@ def get_exif_data(image_path: str) -> ExifData:
 
             # Fallback to deprecated _getexif() for compatibility with older Pillow versions
             if hasattr(image, "_getexif"):
-                # PIL's _getexif() is untyped; cast to Any to access it
-                image_any = cast(Any, image)
-                exifinfo = image_any._getexif()
+                # PIL's _getexif() is untyped; we use type: ignore for the entire block
+                # to handle the untyped dict returned from this deprecated method
+                image_any: Any = image  # type: ignore[assignment]
+                exifinfo = image_any._getexif()  # type: ignore[attr-defined]
                 if exifinfo:
-                    for tag, value in exifinfo.items():
-                        decoded = TAGS.get(tag, tag)
+                    for tag, value in exifinfo.items():  # type: ignore[union-attr]
+                        decoded = TAGS.get(tag, tag)  # type: ignore[arg-type]
                         if decoded in (
                             "FocalLength",
                             "Orientation",
@@ -77,7 +78,7 @@ def get_exif_data(image_path: str) -> ExifData:
                             "DateTimeOriginal",
                             "DateTimeDigitized",
                         ):
-                            exif_data[decoded] = value
+                            exif_data[decoded] = value  # type: ignore[assignment]
 
             return exif_data
     except Exception as e:

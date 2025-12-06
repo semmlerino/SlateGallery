@@ -1,12 +1,13 @@
 """Threading utilities - extracted identically from original SlateGallery.py"""
 
+import contextlib
 import multiprocessing
 import os
 import threading
 from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Optional, Protocol, Union, runtime_checkable
+from typing import Optional, Protocol, Union, cast, runtime_checkable
 
 from PySide6 import QtCore
 from PySide6.QtCore import Signal
@@ -27,6 +28,14 @@ class CacheManagerProtocol(Protocol):
     """Protocol defining the interface for cache managers."""
     def process_images_batch(
         self, image_paths: Sequence[object], _callback: Optional[Callable[[int], None]] = None
+    ) -> list[dict[str, object]]:
+        ...
+
+    def process_images_batch_with_exif(
+        self,
+        image_paths: Sequence[str],
+        existing_cache: Optional[dict[str, dict[str, object]]] = None,
+        _callback: Optional[Callable[[int], None]] = None,
     ) -> list[dict[str, object]]:
         ...
 
@@ -65,10 +74,10 @@ def _scan_single_root_dir(root_dir: str, exclude_patterns: str) -> dict[str, dic
     logger.info(f"Scanning: {root_dir} (prefix: {root_basename})")
 
     # Scan this directory
-    slates = scan_directories(root_dir, exclude_patterns)
+    slates: dict[str, dict[str, list[str]]] = scan_directories(root_dir, exclude_patterns)
 
     # Prefix slate names to avoid conflicts between different roots
-    prefixed_slates = {}
+    prefixed_slates: dict[str, dict[str, list[str]]] = {}
     for slate_name, slate_data in slates.items():
         if slate_name == "/":
             prefixed_name = f"{root_basename}/Root"
@@ -174,12 +183,11 @@ class ScanThread(QtCore.QThread):
                 slates = merged_slates
                 logger.info(f"Concurrent scan complete: {len(slates)} total slates from {len(self.root_dirs)} directories")
 
-            # Process EXIF data for all slates
-            processed_slates: int = 0
+            # Process EXIF data for all slates (with caching)
             total_slates: int = len(slates)
             logger.debug(f"Total slates to process: {total_slates}")
 
-            for _slate, data in slates.items():
+            for processed_slates, (_slate, data) in enumerate(slates.items(), start=1):
                 # Check if we should stop
                 if self._stop_event.is_set():
                     logger.info("Scan thread stopped by user request")
@@ -187,17 +195,18 @@ class ScanThread(QtCore.QThread):
                     return
 
                 image_paths = data.get("images", [])
-                processed_images = self.cache_manager.process_images_batch(
-                    image_paths, _callback=lambda p: self.progress.emit(50 + int(p / 2))  # Second 50% is EXIF processing  # type: ignore[arg-type]
+                # Use EXIF-aware processing to cache metadata
+                processed_images = self.cache_manager.process_images_batch_with_exif(
+                    [str(p) for p in image_paths],
+                    existing_cache=None,  # Fresh scan, no existing cache
+                    _callback=lambda p: self.progress.emit(50 + int(p / 2)),  # Second 50% is EXIF processing
                 )
                 data["images"] = processed_images  # pyright: ignore[reportArgumentType]
 
-                processed_slates += 1
-                if total_slates > 0:
-                    # Progress: 50-100% for EXIF processing
-                    exif_progress: float = 50 + ((processed_slates / float(total_slates)) * 50)
-                else:
-                    exif_progress = 100
+                # Progress: 50-100% for EXIF processing
+                exif_progress: float = (
+                    50 + ((processed_slates / float(total_slates)) * 50) if total_slates > 0 else 100
+                )
                 self.progress.emit(int(exif_progress))
                 logger.debug(f"EXIF processing progress: {exif_progress:.2f}%")
 
@@ -289,18 +298,21 @@ class GenerateGalleryThread(QtCore.QThread):
 
             gallery_slates: list[dict[str, object]] = []
             total_slates: int = len(self.selected_slates)
-            processed_slates: int = 0
             logger.info(f"Total slates selected: {total_slates}")
 
-            for slate in self.selected_slates:
+            for processed_slates, slate in enumerate(self.selected_slates, start=1):
                 # Check if we should stop
                 if self._stop_event.is_set():
                     logger.info("Gallery generation thread stopped by user request")
                     self.gallery_complete.emit(False, "Gallery generation cancelled.")
                     return
 
-                slate_data = self.slates_dict.get(slate, {})
-                images: list[object] = slate_data.get("images", []) if isinstance(slate_data, dict) else []  # type: ignore[arg-type]
+                slate_data_val = self.slates_dict.get(slate)
+                images: list[object] = []
+                if isinstance(slate_data_val, dict):
+                    images_val = cast(dict[str, object], slate_data_val).get("images")
+                    if isinstance(images_val, list):
+                        images = cast(list[object], images_val)
 
                 # Always use parallel processing for better performance
                 # Even without thumbnails, we still need to extract EXIF data in parallel
@@ -314,25 +326,26 @@ class GenerateGalleryThread(QtCore.QThread):
                         if not isinstance(image, dict):
                             continue
                         # Skip macOS resource fork files
-                        image_path_val = image.get("path", "")
+                        image_dict = cast(dict[str, object], image)
+                        image_path_val = image_dict.get("path")
                         if not isinstance(image_path_val, str):
                             continue
                         if os.path.basename(image_path_val).startswith("._"):
                             logger.debug(f"Skipping macOS resource fork file: {image_path_val}")
                             continue
-                        image_data: Optional[ImageData] = self.process_image(image_path_val)
+                        # Get cached EXIF if available
+                        exif_val = image_dict.get("exif")
+                        cached_exif: Optional[dict[str, object]] = cast(dict[str, object], exif_val) if isinstance(exif_val, dict) else None
+                        image_data: Optional[ImageData] = self.process_image(image_path_val, cached_exif)
                         if image_data is not None:
                             slate_images.append(image_data)
 
                 if slate_images:
                     gallery_slates.append({"slate": slate, "images": slate_images})
 
-                processed_slates += 1
-                progress: float
-                if total_slates > 0:
-                    progress = (processed_slates / float(total_slates)) * 80
-                else:
-                    progress = 80
+                progress: float = (
+                    (processed_slates / float(total_slates)) * 80 if total_slates > 0 else 80
+                )
                 self.progress.emit(int(progress))
                 logger.info(f"Metadata extraction progress: {progress:.2f}%")
 
@@ -382,22 +395,34 @@ class GenerateGalleryThread(QtCore.QThread):
             self.gallery_complete.emit(False, error_message)
 
     def process_images_parallel(self, images: list[object]) -> list[ImageData]:
-        """Process multiple images in parallel using ThreadPoolExecutor."""
+        """Process multiple images in parallel using ThreadPoolExecutor.
+
+        Uses cached EXIF data when available to avoid redundant extraction.
+        """
         import time
         start_time: float = time.perf_counter()
 
         results: list[ImageData] = []
+        cache_hits = 0
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # Submit all image processing tasks (skip macOS resource fork files)
             future_to_image: dict[Future[Optional[ImageData]], str] = {}
             for img in images:
                 if not isinstance(img, dict):
                     continue
-                img_path = img.get("path", "")
-                if not isinstance(img_path, str):
+                img_dict = cast(dict[str, object], img)
+                img_path_val = img_dict.get("path")
+                if not isinstance(img_path_val, str):
                     continue
-                if not os.path.basename(img_path).startswith("._"):
-                    future_to_image[executor.submit(self.process_image, img_path)] = img_path
+                if not os.path.basename(img_path_val).startswith("._"):
+                    # Get cached EXIF if available (from V2 cache format)
+                    exif_val = img_dict.get("exif")
+                    cached_exif: Optional[dict[str, object]] = cast(dict[str, object], exif_val) if isinstance(exif_val, dict) else None
+                    if cached_exif is not None:
+                        cache_hits += 1
+                    future_to_image[
+                        executor.submit(self.process_image, img_path_val, cached_exif)
+                    ] = img_path_val
 
             # Collect results as they complete
             for future in as_completed(future_to_image):
@@ -416,11 +441,26 @@ class GenerateGalleryThread(QtCore.QThread):
         # Log performance metrics
         elapsed_time: float = time.perf_counter() - start_time
         images_per_second: float = len(results) / elapsed_time if elapsed_time > 0 else 0
-        logger.info(f"Processed {len(results)} images in {elapsed_time:.2f}s ({images_per_second:.1f} images/sec) using {self.max_workers} workers")
+        logger.info(
+            f"Processed {len(results)} images in {elapsed_time:.2f}s "
+            f"({images_per_second:.1f} images/sec, {cache_hits} EXIF cache hits) "
+            f"using {self.max_workers} workers"
+        )
 
         return results
 
-    def process_image(self, image_path: str) -> Optional[ImageData]:
+    def process_image(
+        self, image_path: str, cached_exif: Optional[dict[str, object]] = None
+    ) -> Optional[ImageData]:
+        """Process a single image for gallery generation.
+
+        Args:
+            image_path: Path to the image file
+            cached_exif: Pre-cached EXIF data (optional, extracted if not provided)
+
+        Returns:
+            ImageData dictionary or None if processing fails
+        """
         try:
             # Skip macOS resource fork files (._*)
             if os.path.basename(image_path).startswith("._"):
@@ -435,18 +475,23 @@ class GenerateGalleryThread(QtCore.QThread):
                 get_orientation,
             )
 
-            exif: dict[str, object] = get_exif_data(image_path)
-            focal_length: object = exif.get("FocalLength", None)
+            # Use cached EXIF if available, otherwise extract fresh
+            exif: dict[str, object] = cached_exif if cached_exif is not None else get_exif_data(image_path)
+            focal_length: object = exif.get("FocalLength")
             focal_length_value: Optional[float] = None
 
             if focal_length:
                 if isinstance(focal_length, tuple):
                     try:
                         # Validate tuple structure and prevent division by zero
-                        if len(focal_length) >= 2:
-                            denominator = float(focal_length[1])
+                        focal_tuple = cast(tuple[object, ...], focal_length)
+                        if len(focal_tuple) >= 2:
+                            numerator_val = focal_tuple[0]
+                            denominator_val = focal_tuple[1]
+                            denominator = float(cast(float, denominator_val)) if denominator_val is not None else 0.0
+                            numerator = float(cast(float, numerator_val)) if numerator_val is not None else 0.0
                             if denominator != 0:
-                                focal_length_value = float(focal_length[0]) / denominator
+                                focal_length_value = numerator / denominator
                             else:
                                 logger.warning(f"Invalid focal length (zero denominator): {focal_length} for {image_path}")
                         else:
@@ -489,10 +534,8 @@ class GenerateGalleryThread(QtCore.QThread):
                 exif_orientation = exif.get("Orientation")
                 exif_orientation_int: Optional[int] = None
                 if exif_orientation is not None:
-                    try:
+                    with contextlib.suppress(ValueError, TypeError):
                         exif_orientation_int = int(str(exif_orientation))
-                    except (ValueError, TypeError):
-                        pass
                 thumbnails = generate_thumbnail(
                     image_path, self.thumb_dir, size=self.thumbnail_size, orientation=exif_orientation_int
                 )

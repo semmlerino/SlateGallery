@@ -91,9 +91,9 @@ COLOR_ACCENT_TEXT = "#BF360C"
 
 
 class CustomFileDialog(QFileDialog):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: object, **kwargs: object) -> None:
         multi_select = kwargs.pop('multi_select', False)
-        QFileDialog.__init__(self, *args)
+        QFileDialog.__init__(self, *args)  # type: ignore[arg-type]
         self.setOption(QFileDialog.Option.DontUseNativeDialog, True)
         self.setFileMode(QFileDialog.FileMode.Directory)
 
@@ -121,10 +121,10 @@ class CustomFileDialog(QFileDialog):
             logger.warning(f"User attempted to navigate to invalid path: {path}")
 
     @log_function
-    def update_path_input(self, path):
-        path = str(path)
-        self.path_input.setText(path)
-        logger.debug(f"Directory changed to: {path}")
+    def update_path_input(self, path: object) -> None:
+        path_str = str(path)
+        self.path_input.setText(path_str)
+        logger.debug(f"Directory changed to: {path_str}")
 
 
 # ----------------------------- Card Widget -----------------------------
@@ -133,7 +133,7 @@ class CustomFileDialog(QFileDialog):
 class CardWidget(QWidget):
     """Modern card widget with optional title and shadow effect."""
 
-    def __init__(self, title="", parent=None):
+    def __init__(self, title: str = "", parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setObjectName("card")
 
@@ -165,20 +165,20 @@ class CardWidget(QWidget):
 
 class GalleryGeneratorApp(QMainWindow):
     # UI widget type annotations (initialized in _create_* methods)
-    selected_dirs_display: QtWidgets.QPlainTextEdit
-    btn_scan: QPushButton
-    lbl_filter_count: QLabel
-    txt_filter: QLineEdit
-    txt_exclude: QLineEdit
-    list_slates: QListWidget
-    btn_refresh: QPushButton
-    chk_generate_thumbnails: QCheckBox
-    combo_thumbnail_size: QComboBox
-    chk_lazy_loading: QCheckBox
-    btn_generate: QPushButton
-    btn_open_gallery: QPushButton
-    lbl_status: QLabel
-    progress_bar: QProgressBar
+    selected_dirs_display: Optional[QtWidgets.QPlainTextEdit] = None
+    btn_scan: Optional[QPushButton] = None
+    lbl_filter_count: Optional[QLabel] = None
+    txt_filter: Optional[QLineEdit] = None
+    txt_exclude: Optional[QLineEdit] = None
+    list_slates: Optional[QListWidget] = None
+    btn_refresh: Optional[QPushButton] = None
+    chk_generate_thumbnails: Optional[QCheckBox] = None
+    combo_thumbnail_size: Optional[QComboBox] = None
+    chk_lazy_loading: Optional[QCheckBox] = None
+    btn_generate: Optional[QPushButton] = None
+    btn_open_gallery: Optional[QPushButton] = None
+    lbl_status: Optional[QLabel] = None
+    progress_bar: Optional[QProgressBar] = None
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -207,9 +207,9 @@ class GalleryGeneratorApp(QMainWindow):
             self._sync_config_and_save()
             logger.info(f"Default root directory set to home directory: {self.current_root_dir}")
 
-        self.slates_dict = {}
-        self.filtered_slates = {}
-        self.unique_focal_lengths = set()
+        self.slates_dict: dict[str, object] = {}
+        self.filtered_slates: dict[str, object] = {}
+        self.unique_focal_lengths: set[object] = set()
 
         # Thread attributes - initialized dynamically when needed
         self.scan_thread: Optional[ScanThread] = None
@@ -254,7 +254,7 @@ class GalleryGeneratorApp(QMainWindow):
         self.config.exclude_patterns = self.exclude_patterns_pref
         save_config(self.config)
 
-    def setup_style(self):
+    def setup_style(self) -> None:
         self.setStyleSheet(f"""
             /* Main Window */
             QMainWindow {{
@@ -687,7 +687,7 @@ class GalleryGeneratorApp(QMainWindow):
 
         layout.addLayout(status_layout)
 
-    def initUI(self):
+    def initUI(self) -> None:
         """Initialize the main UI layout with all cards and controls."""
         # Central widget with margin
         central_widget = QWidget()
@@ -710,7 +710,7 @@ class GalleryGeneratorApp(QMainWindow):
 
 
     @log_function
-    def update_cached_dirs(self, new_dir):
+    def update_cached_dirs(self, new_dir: str) -> None:
         if new_dir and new_dir not in self.cached_root_dirs:
             self.cached_root_dirs.append(new_dir)
             self.current_root_dir = new_dir
@@ -718,7 +718,7 @@ class GalleryGeneratorApp(QMainWindow):
             logger.info(f"Added new directory to cached slate directories: {new_dir}")
 
     @log_function
-    def on_browse_root(self):
+    def on_browse_root(self) -> None:
         """Browse for directories with multi-select support."""
         try:
             # Use current directory or first cached as starting point
@@ -744,6 +744,8 @@ class GalleryGeneratorApp(QMainWindow):
                     self.update_selected_dirs_display()
 
                     # Update preferences from UI and save configuration
+                    assert self.chk_generate_thumbnails is not None
+                    assert self.chk_lazy_loading is not None
                     self.generate_thumbnails_pref = self.chk_generate_thumbnails.isChecked()
                     self.lazy_loading_pref = self.chk_lazy_loading.isChecked()
                     self._sync_config_and_save()
@@ -766,7 +768,7 @@ class GalleryGeneratorApp(QMainWindow):
             # Clear display if nothing selected
             self.selected_dirs_display.clear()
 
-    def on_scan(self):
+    def on_scan(self) -> None:
         """Scan selected directories for photo collections."""
         try:
             # Guard against multiple concurrent scans
@@ -824,8 +826,8 @@ class GalleryGeneratorApp(QMainWindow):
                     self.update_status("Loaded slates from cache.")
                 else:
                     self.update_status("Loaded from cache (may be outdated - click Scan again to refresh)")
-                self.progress_bar.setValue(100)
-                QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))
+                self.progress_bar.setValue(100)  # type: ignore[union-attr]
+                QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))  # type: ignore[union-attr]
                 logger.info(f"Loaded slates from cache for {len(self.selected_slate_dirs)} directory(ies)")
                 return
 
@@ -843,10 +845,10 @@ class GalleryGeneratorApp(QMainWindow):
             self.update_status(f"Error initiating scan: {e}")
             logger.error(f"Error initiating scan: {e}", exc_info=True)
 
-    def on_scan_complete(self, slates_dict, message):
-        self.slates_dict = slates_dict
+    def on_scan_complete(self, slates_dict: object, message: object) -> None:
+        self.slates_dict = slates_dict  # type: ignore[assignment]
         self.apply_filters()
-        self.update_status(message)
+        self.update_status(str(message))
         self.progress_bar.setValue(100)
         # Hide progress bar after 2 seconds
         QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))
@@ -855,11 +857,12 @@ class GalleryGeneratorApp(QMainWindow):
         self.btn_refresh.setEnabled(True)
         logger.info(f"Scan complete: {message}")
 
-    def on_scan_progress(self, progress):
-        self.progress_bar.setValue(int(progress))
-        logger.debug(f"Scan progress: {int(progress)}%")
+    def on_scan_progress(self, progress: object) -> None:
+        progress_int = int(progress)  # type: ignore[arg-type]
+        self.progress_bar.setValue(progress_int)
+        logger.debug(f"Scan progress: {progress_int}%")
 
-    def on_filter(self):
+    def on_filter(self) -> None:
         """Handle filter text changes with debouncing to improve UI responsiveness."""
         try:
             # Stop any pending filter operation
@@ -873,7 +876,7 @@ class GalleryGeneratorApp(QMainWindow):
             self.update_status(f"Error during filter setup: {e}")
             logger.error(f"Error during filter setup: {e}", exc_info=True)
 
-    def apply_filters_debounced(self):
+    def apply_filters_debounced(self) -> None:
         """Apply filters with performance monitoring and enhanced error handling."""
         import time
 
@@ -911,7 +914,7 @@ class GalleryGeneratorApp(QMainWindow):
             logger.error(error_msg, exc_info=True)
 
     @log_function
-    def apply_filters(self):
+    def apply_filters(self) -> None:
         filter_text = str(self.txt_filter.text()).strip().lower()
         exclude_pattern = str(self.txt_exclude.text()).strip()
 
@@ -946,7 +949,7 @@ class GalleryGeneratorApp(QMainWindow):
         logger.info(f"Filtered slates - filter: '{filter_text}', exclude: '{exclude_pattern}', result: {len(filtered)} slates")
 
     @log_function
-    def populate_slates_list(self):
+    def populate_slates_list(self) -> None:
         self.list_slates.clear()
         for slate in sorted(self.filtered_slates.keys()):
             self.list_slates.addItem(slate)
@@ -962,7 +965,7 @@ class GalleryGeneratorApp(QMainWindow):
 
         logger.debug(f"Populated slates list with {self.list_slates.count()} slates.")
 
-    def on_select_all(self):
+    def on_select_all(self) -> None:
         try:
             for index in range(self.list_slates.count()):
                 item = self.list_slates.item(index)
@@ -972,7 +975,7 @@ class GalleryGeneratorApp(QMainWindow):
             self.update_status(f"Error selecting all slates: {e}")
             logger.error(f"Error selecting all slates: {e}", exc_info=True)
 
-    def on_deselect_all(self):
+    def on_deselect_all(self) -> None:
         try:
             self.list_slates.clearSelection()
             logger.info("All slates deselected.")
@@ -980,7 +983,7 @@ class GalleryGeneratorApp(QMainWindow):
             self.update_status(f"Error deselecting all slates: {e}")
             logger.error(f"Error deselecting all slates: {e}", exc_info=True)
 
-    def on_refresh(self):
+    def on_refresh(self) -> None:
         """Re-scan selected directories, clearing cache."""
         try:
             # Guard against multiple concurrent scans
@@ -1038,7 +1041,7 @@ class GalleryGeneratorApp(QMainWindow):
             self.update_status(f"Error initiating refresh: {e}")
             logger.error(f"Error initiating refresh: {e}", exc_info=True)
 
-    def on_generate(self):
+    def on_generate(self) -> None:
         try:
             # Guard against multiple concurrent gallery generations
             if self.gallery_thread is not None and self.gallery_thread.isRunning():
@@ -1108,9 +1111,9 @@ class GalleryGeneratorApp(QMainWindow):
             self.btn_generate.setEnabled(True)
             logger.error(f"Error initiating gallery generation: {e}", exc_info=True)
 
-    def on_gallery_complete(self, success, message):
-        self.update_status(message)
-        self.progress_bar.setValue(100 if success else 0)
+    def on_gallery_complete(self, success: object, message: object) -> None:
+        self.update_status(str(message))
+        self.progress_bar.setValue(100 if success else 0)  # type: ignore[arg-type]
         # Hide progress bar after 2 seconds
         QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))
         self.btn_generate.setEnabled(True)
@@ -1120,11 +1123,12 @@ class GalleryGeneratorApp(QMainWindow):
             self.btn_open_gallery.setEnabled(False)
         logger.info(f"Gallery generation result: {message}")
 
-    def on_gallery_progress(self, progress):
-        self.progress_bar.setValue(int(progress))
-        logger.debug(f"Gallery generation progress: {int(progress)}%")
+    def on_gallery_progress(self, progress: object) -> None:
+        progress_int = int(progress)  # type: ignore[arg-type]
+        self.progress_bar.setValue(progress_int)
+        logger.debug(f"Gallery generation progress: {progress_int}%")
 
-    def on_open_gallery(self):
+    def on_open_gallery(self) -> None:
         try:
             html_file_path = os.path.join(self.output_dir, "index.html")
             if os.path.exists(html_file_path):
@@ -1136,46 +1140,52 @@ class GalleryGeneratorApp(QMainWindow):
             else:
                 self.update_status("Generated gallery not found.")
                 logger.warning(f"Generated gallery not found at: {html_file_path}")
-                self.btn_open_gallery.setEnabled(False)
+                if self.btn_open_gallery:
+                    self.btn_open_gallery.setEnabled(False)
         except Exception as e:
             self.update_status(f"Error opening gallery: {e}")
             logger.error(f"Error opening gallery: {e}", exc_info=True)
 
     @log_function
-    def update_status(self, message):
-        self.lbl_status.setText(f"{message}")
+    def update_status(self, message: str) -> None:
+        if self.lbl_status:
+            self.lbl_status.setText(f"{message}")
         logger.info(f"Status updated: {message}")
 
-    def on_thumbnail_pref_changed(self):
+    def on_thumbnail_pref_changed(self) -> None:
         """Save thumbnail preference when checkbox state changes."""
-        self.generate_thumbnails_pref = self.chk_generate_thumbnails.isChecked()
+        if self.chk_generate_thumbnails:
+            self.generate_thumbnails_pref = self.chk_generate_thumbnails.isChecked()
         # Enable/disable size dropdown based on checkbox state
-        self.combo_thumbnail_size.setEnabled(self.generate_thumbnails_pref)
+        if self.combo_thumbnail_size:
+            self.combo_thumbnail_size.setEnabled(self.generate_thumbnails_pref)
         self._sync_config_and_save()
 
-    def on_thumbnail_size_changed(self, text):
+    def on_thumbnail_size_changed(self, text: object) -> None:
         """Save thumbnail size preference when dropdown changes."""
-        if text:
+        text_str = str(text)
+        if text_str:
             # Extract the size number from the text (e.g., "600x600" -> 600)
-            if 'x' in text:
-                size_str = text.split('x')[0].strip()
+            if 'x' in text_str:
+                size_str = text_str.split('x')[0].strip()
                 try:
                     self.thumbnail_size = int(size_str)
                     self._sync_config_and_save()
                     logger.info(f"Thumbnail size changed to: {self.thumbnail_size}")
                 except ValueError:
-                    logger.error(f"Invalid thumbnail size format: {text}")
+                    logger.error(f"Invalid thumbnail size format: {text_str}")
             else:
-                logger.error(f"Invalid thumbnail size format (missing 'x'): {text}")
+                logger.error(f"Invalid thumbnail size format (missing 'x'): {text_str}")
 
-    def on_lazy_loading_pref_changed(self):
+    def on_lazy_loading_pref_changed(self) -> None:
         """Save lazy loading preference when checkbox state changes."""
-        self.lazy_loading_pref = self.chk_lazy_loading.isChecked()
+        if self.chk_lazy_loading:
+            self.lazy_loading_pref = self.chk_lazy_loading.isChecked()
         self._sync_config_and_save()
         logger.info(f"Lazy loading preference changed to: {self.lazy_loading_pref}")
 
     @override
-    def closeEvent(self, event):
+    def closeEvent(self, event: object) -> None:
         try:
             # Stop and wait for running threads
             if self.scan_thread and self.scan_thread.isRunning():
@@ -1196,17 +1206,17 @@ class GalleryGeneratorApp(QMainWindow):
             # Save configuration
             self._sync_config_and_save()
 
-            event.accept()
+            event.accept()  # type: ignore[union-attr]
             logger.info("Application closed.")
         except Exception as e:
             logger.error(f"Error during application shutdown: {e}", exc_info=True)
-            event.accept()
+            event.accept()  # type: ignore[union-attr]
 
 
 # ----------------------------- Main Execution -----------------------------
 
 
-def main():
+def main() -> None:
     try:
         app = QApplication(sys.argv)
 
