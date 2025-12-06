@@ -67,7 +67,11 @@
             <label>Focal Length:</label>
             <div class="focal-length-options">
                 {% for focal in focal_lengths %}
+                    {% if focal.value == "unknown" %}
+                    <label><input type="checkbox" class="focal-length-filter" value="unknown" aria-label="Unknown Focal Length"> Unknown ({{ focal.count }} photos)</label>
+                    {% else %}
                     <label><input type="checkbox" class="focal-length-filter" value="{{ focal.value }}" aria-label="{{ focal.value }}mm"> {{ focal.value }}mm ({{ focal.count }} photos)</label>
+                    {% endif %}
                 {% endfor %}
             </div>
             <div class="button-group">

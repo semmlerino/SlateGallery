@@ -281,6 +281,7 @@ class GenerateGalleryThread(QtCore.QThread):
         self.date_lock: threading.Lock = threading.Lock()
         self.date_counts: dict[str, int] = {}  # Format: "YYYY-MM-DD": count
         self.unknown_date_count: int = 0  # Count of images without EXIF date
+        self.unknown_focal_length_count: int = 0  # Count of images without focal length
 
         # Thumbnail directory
         self.thumb_dir: str = os.path.join(output_dir, "thumbnails")
@@ -374,6 +375,13 @@ class GenerateGalleryThread(QtCore.QThread):
                 {"value": focal_length, "count": count}
                 for focal_length, count in sorted(self.focal_length_counts.items())
             ]
+
+            # Add "Unknown" option if there are images without focal length
+            if self.unknown_focal_length_count > 0:
+                focal_length_data.append({
+                    "value": "unknown",  # type: ignore[typeddict-item]
+                    "count": self.unknown_focal_length_count,
+                })
 
             # Convert date counts to structured data sorted by date
             date_data: list[DateData] = [
@@ -560,6 +568,10 @@ class GenerateGalleryThread(QtCore.QThread):
                     self.focal_length_counts[focal_length_value] = (
                         self.focal_length_counts.get(focal_length_value, 0) + 1
                     )
+            else:
+                # Track images without focal length for "Unknown" filter
+                with self.focal_length_lock:
+                    self.unknown_focal_length_count += 1
 
             # Generate thumbnails if enabled
             thumbnails: dict[str, str] = {}

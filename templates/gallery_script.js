@@ -655,8 +655,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const imgPath = img.getAttribute('data-full-image');
 
             const orientationMatch = selectedOrientations.length === 0 || selectedOrientations.includes(imgOrientation);
-            const focal = imgFocalLength ? String(imgFocalLength) : '';
-            const focalMatch = selectedFocalLengths.length === 0 || selectedFocalLengths.includes(focal);
+
+            // Focal length matching: handles "unknown" filter for images without EXIF focal length
+            let focalMatch;
+            if (selectedFocalLengths.length === 0) {
+                focalMatch = true;  // No filter - show all
+            } else if (!imgFocalLength || imgFocalLength === 'None' || imgFocalLength === '') {
+                focalMatch = selectedFocalLengths.includes('unknown');  // Show if "Unknown" selected
+            } else {
+                focalMatch = selectedFocalLengths.includes(String(imgFocalLength));
+            }
 
             // Date matching: extract YYYY-MM-DD from ISO date string and check if it matches any selected day
             // Also handles "unknown" filter for images without EXIF dates
