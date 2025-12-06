@@ -106,6 +106,12 @@
         Showing 0 of 0 images | 0 selected
     </div>
 
+    <!-- Empty filter state: Shown when all images are filtered out -->
+    <div id="filter-empty-state" class="filter-empty-state" style="display: none;">
+        <p>No images match the current filters.</p>
+        <p>Try adjusting your filter selections or <button type="button" id="reset-filters-btn" class="reset-filters-link">reset all filters</button>.</p>
+    </div>
+
     {% for slate in gallery %}
         <div class="slate">
             <div class="slate-header">

@@ -138,7 +138,7 @@ h1 {
     width: 90%;
     max-width: 600px;
     z-index: 900;
-    backdrop-filter: blur(5px);
+    /* Removed backdrop-filter: blur(5px) - expensive GPU compositing */
 }
 .size-adjustment label {
     font-weight: bold;
@@ -376,6 +376,10 @@ h1 {
 .image-container:hover {
     transform: translateY(-3px);
 }
+/* Hidden state - uses class instead of inline style for better browser batching */
+.image-container.filtered-hidden {
+    display: none !important;
+}
 
 .image-container.selected:hover {
     box-shadow: 0 0 0 2px rgba(13, 71, 161, 0.5), 0 6px 16px rgba(13, 71, 161, 0.35);
@@ -422,11 +426,10 @@ h1 {
 @keyframes fadeIn {
     from {
         opacity: 0.5;
-        filter: blur(5px);
+        /* Removed filter: blur(5px) - triggers expensive repaints */
     }
     to {
         opacity: 1;
-        filter: none;
     }
 }
 .image-info {
@@ -654,6 +657,38 @@ h1 {
     background-color: #C5E1A5;
     color: #33691E;
     font-weight: 600;
+}
+
+/* Empty Filter State - shown when all images are filtered out */
+.filter-empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #666666;
+    background-color: #fafafa;
+    border-radius: 8px;
+    margin: 40px auto;
+    max-width: 500px;
+}
+.filter-empty-state p {
+    margin: 10px 0;
+    font-size: 16px;
+}
+.filter-empty-state p:first-child {
+    font-size: 18px;
+    font-weight: 500;
+    color: #333333;
+}
+.reset-filters-link {
+    background: none;
+    border: none;
+    color: #1976D2;
+    cursor: pointer;
+    font-size: inherit;
+    text-decoration: underline;
+    padding: 0;
+}
+.reset-filters-link:hover {
+    color: #0D47A1;
 }
 
 /* Screen Reader Only Content */

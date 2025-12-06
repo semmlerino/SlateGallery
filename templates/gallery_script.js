@@ -34,7 +34,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
         try {
             const selections = {};
-            const checkboxes = document.querySelectorAll('.select-checkbox');
+            // Use cached checkboxes for performance (falls back to query if cache not ready)
+            const checkboxes = galleryState.allCheckboxes || document.querySelectorAll('.select-checkbox');
 
             checkboxes.forEach(checkbox => {
                 if (checkbox.checked) {
@@ -72,8 +73,15 @@ document.addEventListener('DOMContentLoaded', function() {
             const selections = JSON.parse(savedData);
             let restoredCount = 0;
 
-            // Apply saved selections to current page
-            const containers = document.querySelectorAll('.image-container');
+            // Apply saved selections to current page (use cached containers for performance)
+            const containers = galleryState.allImageContainers || document.querySelectorAll('.image-container');
+
+            // Defensive check: ensure DOM is ready
+            if (!containers || containers.length === 0) {
+                console.warn('restoreSelections: No image containers found');
+                return;
+            }
+
             containers.forEach(container => {
                 const imagePath = container.getAttribute('data-full-image');
                 if (imagePath && selections[imagePath]) {
@@ -134,6 +142,10 @@ document.addEventListener('DOMContentLoaded', function() {
         // Caches (invalidated when filters change)
         visibleImagesCache: null,   // Cached visible images for performance
         visibleCheckboxesCache: null, // Cached visible checkboxes for shift-select
+
+        // Static DOM caches (initialized once, never change)
+        allImageContainers: null,   // All .image-container elements
+        allCheckboxes: null,        // All .select-checkbox elements
 
         // Flags
         storageErrorShown: false,   // Track if storage error notification has been shown
@@ -482,13 +494,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Hide all currently selected images
     function hideSelectedImages() {
-        // Get all selected checkboxes from visible images only
-        const imageContainers = document.querySelectorAll('.image-container');
+        // Get all selected checkboxes from visible images only (use cache for performance)
+        const imageContainers = galleryState.allImageContainers || [];
         const selectedImages = [];
 
-        imageContainers.forEach(container => {
-            // Only consider visible images (not filtered out)
-            if (container.style.display !== 'none') {
+        for (const container of imageContainers) {
+            // Only consider visible images (not filtered out) - uses class check for consistency
+            if (!container.classList.contains('filtered-hidden')) {
                 const checkbox = container.querySelector('.select-checkbox');
                 if (checkbox && checkbox.checked) {
                     const imagePath = container.getAttribute('data-full-image');
@@ -501,7 +513,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
             }
-        });
+        }
 
         if (selectedImages.length === 0) {
             showNotification('No images selected to hide', true);
@@ -561,19 +573,24 @@ document.addEventListener('DOMContentLoaded', function() {
         const statusBar = document.getElementById('status-bar');
         if (!statusBar) return;
 
-        const allContainers = document.querySelectorAll('.image-container');
+        // Use cached containers for performance
+        const allContainers = galleryState.allImageContainers || [];
         const totalImages = allContainers.length;
 
-        // Count visible images (not hidden by filters)
+        // Count visible images (not hidden by filters) - uses class check for consistency
         let visibleCount = 0;
-        allContainers.forEach(container => {
-            if (container.style.display !== 'none') {
+        for (const container of allContainers) {
+            if (!container.classList.contains('filtered-hidden')) {
                 visibleCount++;
             }
-        });
+        }
 
-        // Count selected checkboxes
-        const selectedCount = document.querySelectorAll('.select-checkbox:checked').length;
+        // Count selected checkboxes using cached list
+        let selectedCount = 0;
+        const checkboxes = galleryState.allCheckboxes || [];
+        for (const checkbox of checkboxes) {
+            if (checkbox.checked) selectedCount++;
+        }
 
         // Update status bar text with hidden mode indicator
         let statusText = `Showing ${visibleCount} of ${totalImages} images | ${selectedCount} selected`;
@@ -590,6 +607,62 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Update floating clear selection button visibility
         updateFloatingClearButton(selectedCount);
+
+        // Update empty filter state visibility
+        updateEmptyFilterState(visibleCount, totalImages);
+    }
+
+    // Update Empty Filter State visibility
+    function updateEmptyFilterState(visibleCount, totalImages) {
+        const emptyState = document.getElementById('filter-empty-state');
+        if (!emptyState) return;
+
+        // Show empty state only if we have images but none are visible
+        if (totalImages > 0 && visibleCount === 0) {
+            emptyState.style.display = 'block';
+        } else {
+            emptyState.style.display = 'none';
+        }
+    }
+
+    // Reset all filters to show all images
+    function resetAllFilters() {
+        // Uncheck all orientation filters
+        document.querySelectorAll('.orientation-filter').forEach(cb => { cb.checked = false; });
+        // Uncheck all focal length filters
+        document.querySelectorAll('.focal-length-filter').forEach(cb => { cb.checked = false; });
+        // Uncheck all date filters
+        document.querySelectorAll('.date-filter').forEach(cb => { cb.checked = false; });
+
+        // Exit hidden mode if active
+        if (galleryState.isHiddenMode) {
+            galleryState.isHiddenMode = false;
+            const toggleButton = document.getElementById('toggle-hidden-mode');
+            if (toggleButton) {
+                toggleButton.setAttribute('aria-pressed', 'false');
+                const showHiddenText = toggleButton.querySelector('#show-hidden-text');
+                const showGalleryText = toggleButton.querySelector('#show-gallery-text');
+                if (showHiddenText) showHiddenText.style.display = 'inline';
+                if (showGalleryText) showGalleryText.style.display = 'none';
+            }
+            const statusBar = document.getElementById('status-bar');
+            if (statusBar) statusBar.classList.remove('hidden-mode');
+        }
+
+        // Exit selected mode if active
+        if (galleryState.isSelectedMode) {
+            galleryState.isSelectedMode = false;
+            const toggleButton = document.getElementById('toggle-selected-mode');
+            if (toggleButton) {
+                toggleButton.setAttribute('aria-pressed', 'false');
+            }
+            const statusBar = document.getElementById('status-bar');
+            if (statusBar) statusBar.classList.remove('selected-mode');
+        }
+
+        // Re-filter images
+        filterImages();
+        showNotification('All filters reset');
     }
 
     // Update Export Button Badge based on selection count
@@ -632,7 +705,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Constants for chunked filtering
+    const FILTER_CHUNK_SIZE = 100;  // Images per chunk for large galleries
+    const LARGE_GALLERY_THRESHOLD = 200;  // Use chunking above this count
+    let filterGeneration = 0;  // Track filter operations to cancel stale ones
+
     // Function to filter images based on selected filters
+    // Uses CSS class (filtered-hidden) instead of inline style for better browser batching
+    // For large galleries (200+ images), uses chunked processing to prevent UI freezes
     function filterImages() {
         const orientationCheckboxes = document.querySelectorAll('.orientation-filter');
         const selectedOrientations = [];
@@ -646,9 +726,15 @@ document.addEventListener('DOMContentLoaded', function() {
         const selectedDates = [];
         dateCheckboxes.forEach(cb => { if (cb.checked) selectedDates.push(cb.value); });
 
-        const imageContainers = document.getElementsByClassName('image-container');
+        // Use cached containers for performance
+        const imageContainers = galleryState.allImageContainers || [];
 
-        for (const img of imageContainers) {
+        // Increment generation to invalidate any in-progress filter operations
+        filterGeneration++;
+        const currentGeneration = filterGeneration;
+
+        // Helper to check if image should be visible
+        function shouldShowImage(img) {
             const imgOrientation = img.getAttribute('data-orientation');
             const imgFocalLength = img.getAttribute('data-focal-length');
             const imgDate = img.getAttribute('data-date');
@@ -656,23 +742,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const orientationMatch = selectedOrientations.length === 0 || selectedOrientations.includes(imgOrientation);
 
-            // Focal length matching: handles "unknown" filter for images without EXIF focal length
+            // Focal length matching
             let focalMatch;
             if (selectedFocalLengths.length === 0) {
-                focalMatch = true;  // No filter - show all
+                focalMatch = true;
             } else if (!imgFocalLength || imgFocalLength === 'None' || imgFocalLength === '') {
-                focalMatch = selectedFocalLengths.includes('unknown');  // Show if "Unknown" selected
+                focalMatch = selectedFocalLengths.includes('unknown');
             } else {
                 focalMatch = selectedFocalLengths.includes(String(imgFocalLength));
             }
 
-            // Date matching: extract YYYY-MM-DD from ISO date string and check if it matches any selected day
-            // Also handles "unknown" filter for images without EXIF dates
+            // Date matching
             let dateMatch;
             if (selectedDates.length === 0) {
-                dateMatch = true;  // No filter - show all
+                dateMatch = true;
             } else if (!imgDate || imgDate === 'None' || imgDate === '') {
-                dateMatch = selectedDates.includes('unknown');  // Show if "Unknown Date" selected
+                dateMatch = selectedDates.includes('unknown');
             } else {
                 dateMatch = selectedDates.some(date => imgDate.startsWith(date));
             }
@@ -680,64 +765,101 @@ document.addEventListener('DOMContentLoaded', function() {
             // Hidden state filtering
             let hiddenMatch = true;
             if (galleryState.isHiddenMode) {
-                // In hidden mode: ONLY show hidden images
                 hiddenMatch = isImageHidden(imgPath);
             } else {
-                // In normal mode: EXCLUDE hidden images
                 hiddenMatch = !isImageHidden(imgPath);
             }
 
             // Selected state filtering
             let selectedMatch = true;
             if (galleryState.isSelectedMode) {
-                // In selected mode: ONLY show selected images
                 selectedMatch = img.classList.contains('selected');
             }
 
-            img.style.display = (orientationMatch && focalMatch && dateMatch && hiddenMatch && selectedMatch) ? 'flex' : 'none';
+            return orientationMatch && focalMatch && dateMatch && hiddenMatch && selectedMatch;
         }
 
-        // Hide empty slates (slates with no visible images)
-        const slates = document.querySelectorAll('.slate');
-        slates.forEach(function(slate) {
-            const slateImages = slate.querySelectorAll('.image-container');
-            let hasVisibleImages = false;
+        // Helper to update slate visibility
+        function updateSlateVisibility() {
+            const slates = document.querySelectorAll('.slate');
+            slates.forEach(function(slate) {
+                const slateImages = slate.querySelectorAll('.image-container');
+                let hasVisibleImages = false;
+                for (let i = 0; i < slateImages.length; i++) {
+                    if (!slateImages[i].classList.contains('filtered-hidden')) {
+                        hasVisibleImages = true;
+                        break;
+                    }
+                }
+                slate.style.display = hasVisibleImages ? 'block' : 'none';
+            });
+        }
 
-            // Check if this slate has any visible images
-            for (let i = 0; i < slateImages.length; i++) {
-                if (slateImages[i].style.display !== 'none') {
-                    hasVisibleImages = true;
-                    break;
+        // Helper to finalize filtering (called after all images processed)
+        function finalizeFiltering() {
+            updateSlateVisibility();
+            invalidateVisibleImagesCache();
+
+            // If modal is open, refresh the visible images list
+            if (modal.classList.contains('show')) {
+                galleryState.allVisibleImages = getVisibleImages();
+                if (galleryState.allVisibleImages.length === 0) {
+                    closeModal();
+                } else {
+                    if (galleryState.currentImageIndex >= galleryState.allVisibleImages.length) {
+                        galleryState.currentImageIndex = galleryState.allVisibleImages.length - 1;
+                    }
+                    displayImage(galleryState.currentImageIndex);
                 }
             }
+            updateCounts();
+        }
 
-            // Hide the entire slate if no visible images
-            if (hasVisibleImages) {
-                slate.style.display = 'block';
-            } else {
-                slate.style.display = 'none';
-            }
-        });
-
-        // Invalidate visible images cache after filtering (P1 Performance Fix)
-        invalidateVisibleImagesCache();
-
-        // If modal is open, refresh the visible images list
-        if (modal.classList.contains('show')) {
-            galleryState.allVisibleImages = getVisibleImages();
-            if (galleryState.allVisibleImages.length === 0) {
-                closeModal();
-            } else {
-                // Clamp currentImageIndex to valid range after filter reduces visible images
-                if (galleryState.currentImageIndex >= galleryState.allVisibleImages.length) {
-                    galleryState.currentImageIndex = galleryState.allVisibleImages.length - 1;
+        // For small galleries, process synchronously (no overhead needed)
+        if (imageContainers.length < LARGE_GALLERY_THRESHOLD) {
+            for (const img of imageContainers) {
+                if (shouldShowImage(img)) {
+                    img.classList.remove('filtered-hidden');
+                } else {
+                    img.classList.add('filtered-hidden');
                 }
-                displayImage(galleryState.currentImageIndex);
+            }
+            finalizeFiltering();
+            return;
+        }
+
+        // For large galleries, use chunked processing with requestIdleCallback
+        let index = 0;
+        const scheduleChunk = window.requestIdleCallback || function(cb) { setTimeout(cb, 1); };
+
+        function processChunk(deadline) {
+            // Check if this filter operation is still current
+            if (currentGeneration !== filterGeneration) {
+                return;  // Abort - newer filter operation started
+            }
+
+            // Process images while we have time (or at least one chunk)
+            const chunkEnd = Math.min(index + FILTER_CHUNK_SIZE, imageContainers.length);
+            while (index < chunkEnd) {
+                const img = imageContainers[index];
+                if (shouldShowImage(img)) {
+                    img.classList.remove('filtered-hidden');
+                } else {
+                    img.classList.add('filtered-hidden');
+                }
+                index++;
+            }
+
+            // Schedule next chunk or finalize
+            if (index < imageContainers.length) {
+                scheduleChunk(processChunk);
+            } else {
+                finalizeFiltering();
             }
         }
 
-        // Update status bar after filtering
-        updateCounts();
+        // Start chunked processing
+        scheduleChunk(processChunk);
     }
 
     // Functions to select/deselect all checkboxes based on a filter class
@@ -755,28 +877,30 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Global Select All Photos - only select photos that are visible!
     function selectAllPhotos() {
-        const imageContainers = document.querySelectorAll('.image-container');
-        imageContainers.forEach(container => {
-            // Only select if container is visible
-            if (container.style.display !== 'none') {
+        // Use cached containers for performance
+        const imageContainers = galleryState.allImageContainers || [];
+        for (const container of imageContainers) {
+            // Only select if container is visible (uses class check for consistency)
+            if (!container.classList.contains('filtered-hidden')) {
                 const checkbox = container.querySelector('.select-checkbox');
                 if (checkbox) {
                     checkbox.checked = true;
                     container.classList.add('selected');
                 }
             }
-        });
+        }
         debouncedSave(); // Save selections after bulk operation
         updateCounts(); // Update status bar
     }
 
     // Global Deselect All Photos
     function deselectAllPhotos() {
-        const checkboxes = document.querySelectorAll('.select-checkbox');
-        checkboxes.forEach(cb => {
+        // Use cached checkboxes for performance
+        const checkboxes = galleryState.allCheckboxes || [];
+        for (const cb of checkboxes) {
             cb.checked = false;
             cb.parentElement.classList.remove('selected');
-        });
+        }
         debouncedSave(); // Save selections after bulk operation
         updateCounts(); // Update status bar
     }
@@ -795,6 +919,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const floatingClearBtn = document.getElementById('floating-clear-selection');
     if (floatingClearBtn) {
         floatingClearBtn.addEventListener('click', deselectAllPhotos);
+    }
+
+    // Reset filters button event listener (in empty filter state)
+    const resetFiltersBtn = document.getElementById('reset-filters-btn');
+    if (resetFiltersBtn) {
+        resetFiltersBtn.addEventListener('click', resetAllFilters);
     }
 
     // Keyboard shortcut for hide selected (Shift+H)
@@ -857,7 +987,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.getElementById('export-to-clipboard').addEventListener('click', function() {
-        const imageContainers = document.getElementsByClassName('image-container');
+        // Use cached containers for performance
+        const imageContainers = galleryState.allImageContainers || [];
         const exportData = [];
         let lastFolderPath = '';
         let currentBasePath = '';
@@ -1120,8 +1251,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Get visible checkboxes with caching for shift-select performance
     function getVisibleCheckboxes() {
         if (!galleryState.visibleCheckboxesCache) {
+            // Use class check for consistency with filterImages()
             galleryState.visibleCheckboxesCache = Array.from(document.querySelectorAll('.select-checkbox'))
-                .filter(cb => cb.parentElement.style.display !== 'none');
+                .filter(cb => !cb.parentElement.classList.contains('filtered-hidden'));
         }
         return galleryState.visibleCheckboxesCache;
     }
@@ -1129,8 +1261,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Function to get all currently visible images (with caching)
     function getVisibleImages() {
         if (!galleryState.visibleImagesCache) {
+            // Use class check for consistency with filterImages()
             galleryState.visibleImagesCache = Array.from(document.querySelectorAll('.image-container img'))
-                        .filter(img => img.parentElement.style.display !== 'none');
+                        .filter(img => !img.parentElement.classList.contains('filtered-hidden'));
         }
         return galleryState.visibleImagesCache;
     }
@@ -1335,8 +1468,8 @@ document.addEventListener('DOMContentLoaded', function() {
     function selectAllInSlate(slateElement) {
         const containers = slateElement.querySelectorAll('.image-container');
         containers.forEach(function(container) {
-            // Only select if container is visible
-            if (container.style.display !== 'none') {
+            // Only select if container is visible (uses class check for consistency)
+            if (!container.classList.contains('filtered-hidden')) {
                 const checkbox = container.querySelector('.select-checkbox');
                 if (checkbox) {
                     checkbox.checked = true;
@@ -1399,6 +1532,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize the gallery
     function initializeGallery() {
+        // Cache static DOM elements once (never change after page load)
+        galleryState.allImageContainers = Array.from(document.querySelectorAll('.image-container'));
+        galleryState.allCheckboxes = Array.from(document.querySelectorAll('.select-checkbox'));
+
         // Restore hidden images from localStorage
         restoreHiddenImages();
         // Update hidden count badge
