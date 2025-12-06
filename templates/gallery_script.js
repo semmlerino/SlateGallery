@@ -1123,7 +1123,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // ===== EVENT DELEGATION FOR CHECKBOXES (P0 Performance Fix) =====
     // Instead of 500+ individual listeners, use single delegated listener on document
     // Memory: ~50KB saved, initialization: ~95ms faster on 500 images
-    // Enhanced with shift-select support for range selection
+    // Selection shortcuts: Shift+click = range, Ctrl/Cmd+click = toggle, Normal click = set anchor
     document.addEventListener('click', function(e) {
         if (e.target.matches('.select-checkbox')) {
             const checkbox = e.target;
@@ -1151,8 +1151,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 // NOTE: We do NOT update lastSelectedIndex here!
                 // The anchor point should stay at the original position so you can
                 // extend or shrink the selection by shift-clicking different positions
+            } else if (e.ctrlKey || e.metaKey) {
+                // Ctrl/Cmd+click - toggle individual item and update anchor
+                if (currentIndex !== -1) {
+                    galleryState.lastSelectedIndex = currentIndex;
+                }
+                // Let default checkbox behavior handle the actual toggle
             } else {
-                // Normal click - update anchor to current position
+                // Normal click - set anchor only, NO toggle
+                e.preventDefault(); // Prevent checkbox from toggling
                 if (currentIndex !== -1) {
                     galleryState.lastSelectedIndex = currentIndex;
                 }
@@ -1192,7 +1199,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // ===== EVENT DELEGATION FOR IMAGE CLICKS (P0 Performance Fix) =====
     // Instead of 500+ individual listeners, use single delegated listener on document
     // Memory: ~50KB saved, initialization: ~95ms faster on 500 images
-    // Direct state manipulation to avoid double-processing from synthetic events
+    // Selection shortcuts: Shift+click = range, Ctrl/Cmd+click = toggle, Normal click = set anchor
     document.addEventListener('click', function(e) {
         if (e.target.matches('.image-container img')) {
             const img = e.target;
@@ -1200,18 +1207,17 @@ document.addEventListener('DOMContentLoaded', function() {
             if (checkbox) {
                 // Use cached visible checkboxes for performance
                 const visibleCheckboxes = getVisibleCheckboxes();
+                const currentIndex = visibleCheckboxes.indexOf(checkbox);
 
                 // Handle shift-click for range selection
                 if (e.shiftKey && galleryState.lastSelectedIndex !== -1) {
-                    const currentIndex = visibleCheckboxes.indexOf(checkbox);
-
                     if (currentIndex !== -1) {
                         const firstCheckbox = visibleCheckboxes[galleryState.lastSelectedIndex];
                         const shouldCheck = firstCheckbox ? firstCheckbox.checked : true;
                         selectRange(galleryState.lastSelectedIndex, currentIndex, shouldCheck);
                     }
-                } else {
-                    // Direct toggle - no synthetic event dispatch
+                } else if (e.ctrlKey || e.metaKey) {
+                    // Ctrl/Cmd+click - toggle individual item
                     checkbox.checked = !checkbox.checked;
                     // Update visual state
                     if (checkbox.checked) {
@@ -1220,10 +1226,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         checkbox.parentElement.classList.remove('selected');
                     }
                     // Update anchor for shift-select
-                    galleryState.lastSelectedIndex = visibleCheckboxes.indexOf(checkbox);
+                    galleryState.lastSelectedIndex = currentIndex;
                     // Save and update
                     debouncedSave();
                     updateCounts();
+                } else {
+                    // Normal click - set anchor only, NO toggle
+                    galleryState.lastSelectedIndex = currentIndex;
                 }
             }
         }
