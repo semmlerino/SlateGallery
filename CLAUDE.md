@@ -117,7 +117,7 @@ basedpyright src/      # Type checking
   - `test_threading.py` - Thread lifecycle and signal tests
 
 ### JavaScript Test Suite Overview
-- **330 total tests** covering gallery template frontend functionality
+- **338 total tests** covering gallery template frontend functionality
 - **Test framework**: Mocha + Chai + Sinon (HTML-based, CDN delivery)
 - **Current coverage**: Modal, Events, Persistence, Empty Slate Hiding, Size Slider, Filters, Notifications, Hidden Images, Selection Range
 - **Zero installation required**: Open `tests/gallery/gallery_tests.html` in browser
@@ -171,7 +171,7 @@ cd tests/gallery
 ./run_tests.sh headless   # CI/CD headless mode
 ```
 
-**Expected Output**: `330 passing` - All frontend tests pass
+**Expected Output**: `338 passing` - All frontend tests pass
 
 ### Qt Testing in Headless Environments
 

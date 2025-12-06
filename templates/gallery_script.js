@@ -1158,11 +1158,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 // Let default checkbox behavior handle the actual toggle
             } else {
-                // Normal click - set anchor only, NO toggle
-                e.preventDefault(); // Prevent checkbox from toggling
+                // Normal click - toggle checkbox (let default behavior happen) and set anchor
                 if (currentIndex !== -1) {
                     galleryState.lastSelectedIndex = currentIndex;
                 }
+                // Let default checkbox behavior handle the actual toggle
+                // The 'change' event handler below will update visual state
             }
         }
     });
@@ -1231,8 +1232,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     debouncedSave();
                     updateCounts();
                 } else {
-                    // Normal click - set anchor only, NO toggle
+                    // Normal click - toggle checkbox and set anchor
+                    checkbox.checked = !checkbox.checked;
+                    if (checkbox.checked) {
+                        checkbox.parentElement.classList.add('selected');
+                    } else {
+                        checkbox.parentElement.classList.remove('selected');
+                    }
                     galleryState.lastSelectedIndex = currentIndex;
+                    debouncedSave();
+                    updateCounts();
                 }
             }
         }
