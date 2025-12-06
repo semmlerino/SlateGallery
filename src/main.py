@@ -73,8 +73,9 @@ class HtmlItemDelegate(QStyledItemDelegate):
         if not isinstance(painter, QPainter) or not isinstance(index, QModelIndex):
             return
 
-        # Initialize style option
-        opt: Any = QStyleOptionViewItem(option)
+        # Initialize style option - use Any to work around incomplete PySide6 stubs
+        # for QStyleOptionViewItem properties (widget, text, rect are not typed)
+        opt: Any = QStyleOptionViewItem(option)  # pyright: ignore[reportExplicitAny]
         self.initStyleOption(opt, index)
 
         # Get the style
@@ -114,7 +115,8 @@ class HtmlItemDelegate(QStyledItemDelegate):
         if not isinstance(index, QModelIndex):
             return QSize()
 
-        opt: Any = QStyleOptionViewItem(option)
+        # Use Any to work around incomplete PySide6 stubs for QStyleOptionViewItem
+        opt: Any = QStyleOptionViewItem(option)  # pyright: ignore[reportExplicitAny]
         self.initStyleOption(opt, index)
 
         doc = QTextDocument()
@@ -1100,7 +1102,8 @@ class GalleryGeneratorApp(QMainWindow):
     def populate_slates_list(self) -> None:
         # Save currently selected slate names before clearing (using stored data, not display text)
         selected_names: set[str] = {
-            str(item.data(Qt.ItemDataRole.UserRole)) for item in self.list_slates.selectedItems()
+            str(item.data(Qt.ItemDataRole.UserRole))  # pyright: ignore[reportAny]
+            for item in self.list_slates.selectedItems()
         }
 
         self.list_slates.clear()
@@ -1225,7 +1228,10 @@ class GalleryGeneratorApp(QMainWindow):
                 logger.warning("Generate gallery initiated without selecting any slates.")
                 return
 
-            selected_slates = [str(item.data(Qt.ItemDataRole.UserRole)) for item in selected_items]
+            selected_slates = [
+                str(item.data(Qt.ItemDataRole.UserRole))  # pyright: ignore[reportAny]
+                for item in selected_items
+            ]
             output = self.output_dir
 
             if not output:
