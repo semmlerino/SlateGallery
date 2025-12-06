@@ -280,6 +280,7 @@ class GenerateGalleryThread(QtCore.QThread):
         # Date-related data structures
         self.date_lock: threading.Lock = threading.Lock()
         self.date_counts: dict[str, int] = {}  # Format: "YYYY-MM-DD": count
+        self.unknown_date_count: int = 0  # Count of images without EXIF date
 
         # Thumbnail directory
         self.thumb_dir: str = os.path.join(output_dir, "thumbnails")
@@ -379,6 +380,14 @@ class GenerateGalleryThread(QtCore.QThread):
                 {"value": date_key, "count": count, "display_date": self._format_date_for_display(date_key)}
                 for date_key, count in sorted(self.date_counts.items())
             ]
+
+            # Add "Unknown Date" option if there are images without EXIF dates
+            if self.unknown_date_count > 0:
+                date_data.append({
+                    "value": "unknown",
+                    "count": self.unknown_date_count,
+                    "display_date": "Unknown Date"
+                })
 
             success, gallery_skipped = generate_html_gallery(
                 gallery_slates,  # pyright: ignore[reportArgumentType]
@@ -541,6 +550,10 @@ class GenerateGalleryThread(QtCore.QThread):
                 # Count photos by day
                 with self.date_lock:
                     self.date_counts[date_key] = self.date_counts.get(date_key, 0) + 1
+            else:
+                # Track images without EXIF dates for "Unknown Date" filter
+                with self.date_lock:
+                    self.unknown_date_count += 1
 
             if focal_length_value is not None:
                 with self.focal_length_lock:

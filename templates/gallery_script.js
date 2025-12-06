@@ -37,6 +37,11 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (e) {
             // localStorage might be full or disabled
             console.warn('Failed to save selections to localStorage:', e);
+            // Notify user once per session
+            if (!galleryState.storageErrorShown) {
+                galleryState.storageErrorShown = true;
+                showNotification('Storage full - selections may not persist after refresh', true);
+            }
         }
     }
 
@@ -96,15 +101,30 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 
-    // ===== HIDDEN IMAGES SYSTEM =====
-    // Manages hiding/unhiding images with localStorage persistence
-    // Uses in-memory cache for O(1) performance (not localStorage reads in hot path)
+    // ===== CONSOLIDATED GALLERY STATE =====
+    // All mutable state in one place for easier management and debugging
+    const galleryState = {
+        // Hidden images system
+        hiddenImages: {},           // Format: {"/path/to/image.jpg": true}
+        isHiddenMode: false,        // Toggle between normal gallery and hidden images view
 
-    // Global state - in-memory cache initialized on page load
-    let hiddenImages = {}; // Format: {"/path/to/image.jpg": true}
-    let isHiddenMode = false; // Toggle between normal gallery and hidden images view
-    let isSelectedMode = false; // Toggle between normal gallery and selected images view
-    let lastSelectedIndex = -1; // Track last selected checkbox for shift-select range
+        // Selection system
+        isSelectedMode: false,      // Toggle between normal gallery and selected images view
+        lastSelectedIndex: -1,      // Track last selected checkbox for shift-select range
+
+        // Modal system (initialized later after DOM elements are available)
+        allVisibleImages: [],       // Array of visible image elements
+        currentImageIndex: 0,       // Current position in modal
+        lastFocusedElement: null,   // Element that triggered the modal
+
+        // Caches (invalidated when filters change)
+        visibleImagesCache: null,   // Cached visible images for performance
+        visibleCheckboxesCache: null, // Cached visible checkboxes for shift-select
+
+        // Flags
+        storageErrorShown: false,   // Track if storage error notification has been shown
+        processingRangeSelect: false // Flag to prevent double event handling during shift-select
+    };
 
     // ARIA live region for screen reader announcements
     function announceToScreenReader(message) {
@@ -121,10 +141,10 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const storageKey = getGalleryIdentifier() + '_hidden';
             const savedData = localStorage.getItem(storageKey);
-            hiddenImages = savedData ? JSON.parse(savedData) : {};
+            galleryState.hiddenImages = savedData ? JSON.parse(savedData) : {};
         } catch (e) {
             console.error('Failed to restore hidden images:', e);
-            hiddenImages = {};
+            galleryState.hiddenImages = {};
         }
     }
 
@@ -134,20 +154,25 @@ document.addEventListener('DOMContentLoaded', function() {
 
         try {
             const storageKey = getGalleryIdentifier() + '_hidden';
-            localStorage.setItem(storageKey, JSON.stringify(hiddenImages));
+            localStorage.setItem(storageKey, JSON.stringify(galleryState.hiddenImages));
         } catch (e) {
             console.error('Failed to save hidden images:', e);
+            // Notify user once per session
+            if (!galleryState.storageErrorShown) {
+                galleryState.storageErrorShown = true;
+                showNotification('Storage full - hidden images may not persist after refresh', true);
+            }
         }
     }, 300);
 
     // O(1) in-memory lookup - NOT reading localStorage
     function isImageHidden(imagePath) {
-        return hiddenImages[imagePath] === true;
+        return galleryState.hiddenImages[imagePath] === true;
     }
 
     // Get count of hidden images
     function getHiddenImagesCount() {
-        return Object.keys(hiddenImages).filter(key => hiddenImages[key]).length;
+        return Object.keys(galleryState.hiddenImages).filter(key => galleryState.hiddenImages[key]).length;
     }
 
     // Get count of selected images
@@ -157,7 +182,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Hide image from gallery
     function hideImage(imagePath) {
-        hiddenImages[imagePath] = true;
+        galleryState.hiddenImages[imagePath] = true;
 
         // Only clear selection for THIS image, not all selections
         const checkbox = document.querySelector(`[data-full-image="${imagePath}"] .select-checkbox`);
@@ -172,15 +197,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Unhide image (restore to gallery)
     function unhideImage(imagePath) {
-        delete hiddenImages[imagePath];
+        delete galleryState.hiddenImages[imagePath];
         saveHiddenImages(); // Debounced save
     }
 
     // Hide current image in modal mode
     function hideCurrentImage() {
-        if (allVisibleImages.length === 0) return;
+        if (galleryState.allVisibleImages.length === 0) return;
 
-        const image = allVisibleImages[currentImageIndex];
+        const image = galleryState.allVisibleImages[galleryState.currentImageIndex];
         if (!image || !image.parentElement) return;
 
         const imageContainer = image.parentElement;
@@ -202,10 +227,10 @@ document.addEventListener('DOMContentLoaded', function() {
             showNotification('All images hidden. Returning to gallery.');
         } else {
             // Stay at same index if possible, or go to previous if at end
-            if (currentImageIndex >= nextVisibleImages.length) {
-                currentImageIndex = nextVisibleImages.length - 1;
+            if (galleryState.currentImageIndex >= nextVisibleImages.length) {
+                galleryState.currentImageIndex = nextVisibleImages.length - 1;
             }
-            displayImage(currentImageIndex);
+            displayImage(galleryState.currentImageIndex);
         }
 
         updateCounts();
@@ -215,9 +240,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Unhide current image in modal mode (when in hidden mode)
     function unhideCurrentImage() {
-        if (allVisibleImages.length === 0) return;
+        if (galleryState.allVisibleImages.length === 0) return;
 
-        const image = allVisibleImages[currentImageIndex];
+        const image = galleryState.allVisibleImages[galleryState.currentImageIndex];
         if (!image || !image.parentElement) return;
 
         const imageContainer = image.parentElement;
@@ -244,10 +269,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (nextVisibleImages.length === 0) {
                 closeModal();
             } else {
-                if (currentImageIndex >= nextVisibleImages.length) {
-                    currentImageIndex = nextVisibleImages.length - 1;
+                if (galleryState.currentImageIndex >= nextVisibleImages.length) {
+                    galleryState.currentImageIndex = nextVisibleImages.length - 1;
                 }
-                displayImage(currentImageIndex);
+                displayImage(galleryState.currentImageIndex);
             }
         }
 
@@ -263,7 +288,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         if (!hideButton || !hideText) return;
 
-        if (isHiddenMode) {
+        if (galleryState.isHiddenMode) {
             hideButton.classList.add('unhide-mode');
             hideText.textContent = 'Unhide Image';
             hideButton.setAttribute('aria-label', 'Unhide this image and restore to gallery');
@@ -276,11 +301,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Toggle between normal gallery and hidden images view
     function toggleHiddenMode() {
-        isHiddenMode = !isHiddenMode;
+        galleryState.isHiddenMode = !galleryState.isHiddenMode;
 
         // If entering hidden mode, exit selected mode
-        if (isHiddenMode && isSelectedMode) {
-            isSelectedMode = false;
+        if (galleryState.isHiddenMode && galleryState.isSelectedMode) {
+            galleryState.isSelectedMode = false;
             const selectedToggleButton = document.getElementById('toggle-selected-mode');
             const selectedStatusBar = document.getElementById('status-bar');
             const showSelectedText = selectedToggleButton.querySelector('.show-selected-text');
@@ -298,7 +323,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const showHiddenText = toggleButton.querySelector('.show-hidden-text');
         const showGalleryText = toggleButton.querySelector('.show-gallery-text');
 
-        if (isHiddenMode) {
+        if (galleryState.isHiddenMode) {
             // Entering hidden mode
             toggleButton.setAttribute('aria-pressed', 'true');
             showHiddenText.style.display = 'none';
@@ -331,11 +356,11 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Toggle between normal gallery and selected images view
     function toggleSelectedMode() {
-        isSelectedMode = !isSelectedMode;
+        galleryState.isSelectedMode = !galleryState.isSelectedMode;
 
         // If entering selected mode, exit hidden mode
-        if (isSelectedMode && isHiddenMode) {
-            isHiddenMode = false;
+        if (galleryState.isSelectedMode && galleryState.isHiddenMode) {
+            galleryState.isHiddenMode = false;
             const hiddenToggleButton = document.getElementById('toggle-hidden-mode');
             const unhideAllButton = document.getElementById('unhide-all-button');
             const hiddenStatusBar = document.getElementById('status-bar');
@@ -357,7 +382,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const showSelectedText = toggleButton.querySelector('.show-selected-text');
         const showAllText = toggleButton.querySelector('.show-all-text');
 
-        if (isSelectedMode) {
+        if (galleryState.isSelectedMode) {
             // Entering selected mode
             toggleButton.setAttribute('aria-pressed', 'true');
             showSelectedText.style.display = 'none';
@@ -426,10 +451,10 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        hiddenImages = {};
+        galleryState.hiddenImages = {};
         saveHiddenImages();
 
-        if (isHiddenMode) {
+        if (galleryState.isHiddenMode) {
             toggleHiddenMode();
         }
 
@@ -498,7 +523,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Event listener for selected images control
     document.getElementById('toggle-selected-mode').addEventListener('click', toggleSelectedMode);
     document.getElementById('modal-hide-button').addEventListener('click', function() {
-        if (isHiddenMode) {
+        if (galleryState.isHiddenMode) {
             unhideCurrentImage();
         } else {
             hideCurrentImage();
@@ -538,7 +563,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Update status bar text with hidden mode indicator
         let statusText = `Showing ${visibleCount} of ${totalImages} images | ${selectedCount} selected`;
-        if (isHiddenMode) {
+        if (galleryState.isHiddenMode) {
             statusText += ' | HIDDEN IMAGES MODE';
         }
         statusBar.textContent = statusText;
@@ -619,11 +644,19 @@ document.addEventListener('DOMContentLoaded', function() {
             const focalMatch = selectedFocalLengths.length === 0 || selectedFocalLengths.includes(imgFocalLength.toString());
 
             // Date matching: extract YYYY-MM-DD from ISO date string and check if it matches any selected day
-            const dateMatch = selectedDates.length === 0 || (imgDate && selectedDates.some(date => imgDate.startsWith(date)));
+            // Also handles "unknown" filter for images without EXIF dates
+            let dateMatch;
+            if (selectedDates.length === 0) {
+                dateMatch = true;  // No filter - show all
+            } else if (!imgDate || imgDate === 'None' || imgDate === '') {
+                dateMatch = selectedDates.includes('unknown');  // Show if "Unknown Date" selected
+            } else {
+                dateMatch = selectedDates.some(date => imgDate.startsWith(date));
+            }
 
             // Hidden state filtering
             let hiddenMatch = true;
-            if (isHiddenMode) {
+            if (galleryState.isHiddenMode) {
                 // In hidden mode: ONLY show hidden images
                 hiddenMatch = isImageHidden(imgPath);
             } else {
@@ -633,7 +666,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
             // Selected state filtering
             let selectedMatch = true;
-            if (isSelectedMode) {
+            if (galleryState.isSelectedMode) {
                 // In selected mode: ONLY show selected images
                 selectedMatch = img.classList.contains('selected');
             }
@@ -668,11 +701,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // If modal is open, refresh the visible images list
         if (modal.classList.contains('show')) {
-            allVisibleImages = getVisibleImages();
-            if (allVisibleImages.length === 0) {
+            galleryState.allVisibleImages = getVisibleImages();
+            if (galleryState.allVisibleImages.length === 0) {
                 closeModal();
             } else {
-                displayImage(currentImageIndex);
+                // Clamp currentImageIndex to valid range after filter reduces visible images
+                if (galleryState.currentImageIndex >= galleryState.allVisibleImages.length) {
+                    galleryState.currentImageIndex = galleryState.allVisibleImages.length - 1;
+                }
+                displayImage(galleryState.currentImageIndex);
             }
         }
 
@@ -894,11 +931,8 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {boolean} checked - Whether to check or uncheck the range
      */
     function selectRange(startIndex, endIndex, checked) {
-        // Get all visible checkboxes (non-hidden images)
-        const allCheckboxes = Array.from(document.querySelectorAll('.select-checkbox'));
-        const visibleCheckboxes = allCheckboxes.filter(cb => {
-            return cb.parentElement.style.display !== 'none';
-        });
+        // Use cached visible checkboxes for performance
+        const visibleCheckboxes = getVisibleCheckboxes();
 
         // Ensure indices are in correct order
         const start = Math.min(startIndex, endIndex);
@@ -935,24 +969,25 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.target.matches('.select-checkbox')) {
             const checkbox = e.target;
 
-            // Get all visible checkboxes
-            const allCheckboxes = Array.from(document.querySelectorAll('.select-checkbox'));
-            const visibleCheckboxes = allCheckboxes.filter(cb => {
-                return cb.parentElement.style.display !== 'none';
-            });
+            // Use cached visible checkboxes for performance
+            const visibleCheckboxes = getVisibleCheckboxes();
             const currentIndex = visibleCheckboxes.indexOf(checkbox);
 
             // Handle shift-click for range selection
-            if (e.shiftKey && lastSelectedIndex !== -1 && currentIndex !== -1) {
+            if (e.shiftKey && galleryState.lastSelectedIndex !== -1 && currentIndex !== -1) {
                 e.preventDefault(); // Prevent default checkbox behavior
 
                 // Determine if we're selecting or deselecting based on the FIRST checkbox state
                 // This ensures consistent behavior: if first checkbox is checked, select all in range
-                const firstCheckbox = visibleCheckboxes[lastSelectedIndex];
+                const firstCheckbox = visibleCheckboxes[galleryState.lastSelectedIndex];
                 const shouldCheck = firstCheckbox ? firstCheckbox.checked : true;
 
+                // Set flag to prevent change handler from double-processing
+                galleryState.processingRangeSelect = true;
                 // Select/deselect the range
-                selectRange(lastSelectedIndex, currentIndex, shouldCheck);
+                selectRange(galleryState.lastSelectedIndex, currentIndex, shouldCheck);
+                // Clear flag after range selection complete
+                galleryState.processingRangeSelect = false;
 
                 // NOTE: We do NOT update lastSelectedIndex here!
                 // The anchor point should stay at the original position so you can
@@ -960,7 +995,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 // Normal click - update anchor to current position
                 if (currentIndex !== -1) {
-                    lastSelectedIndex = currentIndex;
+                    galleryState.lastSelectedIndex = currentIndex;
                 }
             }
         }
@@ -968,6 +1003,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.addEventListener('change', function(e) {
         if (e.target.matches('.select-checkbox')) {
+            // Skip if this change was triggered by range selection
+            // (selectRange already called debouncedSave and updateCounts)
+            if (galleryState.processingRangeSelect) return;
+
             const checkbox = e.target;
             if (checkbox.checked) {
                 checkbox.parentElement.classList.add('selected');
@@ -976,7 +1015,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             // Update modal checkbox if modal is open and this image is currently displayed
             if (modal.classList.contains('show')) {
-                if (allVisibleImages[currentImageIndex] === checkbox.parentElement.querySelector('img')) {
+                if (galleryState.allVisibleImages[galleryState.currentImageIndex] === checkbox.parentElement.querySelector('img')) {
                     modalSelectCheckbox.checked = checkbox.checked;
                 }
             }
@@ -996,18 +1035,17 @@ document.addEventListener('DOMContentLoaded', function() {
             const img = e.target;
             const checkbox = img.parentElement.querySelector('.select-checkbox');
             if (checkbox) {
+                // Use cached visible checkboxes for performance
+                const visibleCheckboxes = getVisibleCheckboxes();
+
                 // Handle shift-click for range selection
-                if (e.shiftKey && lastSelectedIndex !== -1) {
-                    const allCheckboxes = Array.from(document.querySelectorAll('.select-checkbox'));
-                    const visibleCheckboxes = allCheckboxes.filter(cb => {
-                        return cb.parentElement.style.display !== 'none';
-                    });
+                if (e.shiftKey && galleryState.lastSelectedIndex !== -1) {
                     const currentIndex = visibleCheckboxes.indexOf(checkbox);
 
                     if (currentIndex !== -1) {
-                        const firstCheckbox = visibleCheckboxes[lastSelectedIndex];
+                        const firstCheckbox = visibleCheckboxes[galleryState.lastSelectedIndex];
                         const shouldCheck = firstCheckbox ? firstCheckbox.checked : true;
-                        selectRange(lastSelectedIndex, currentIndex, shouldCheck);
+                        selectRange(galleryState.lastSelectedIndex, currentIndex, shouldCheck);
                     }
                 } else {
                     // Direct toggle - no synthetic event dispatch
@@ -1019,11 +1057,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         checkbox.parentElement.classList.remove('selected');
                     }
                     // Update anchor for shift-select
-                    const allCheckboxes = Array.from(document.querySelectorAll('.select-checkbox'));
-                    const visibleCheckboxes = allCheckboxes.filter(cb => {
-                        return cb.parentElement.style.display !== 'none';
-                    });
-                    lastSelectedIndex = visibleCheckboxes.indexOf(checkbox);
+                    galleryState.lastSelectedIndex = visibleCheckboxes.indexOf(checkbox);
                     // Save and update
                     debouncedSave();
                     updateCounts();
@@ -1041,41 +1075,46 @@ document.addEventListener('DOMContentLoaded', function() {
     const nextButton = document.querySelector('.next-button');
     const modalSelectCheckbox = document.querySelector('.modal-checkbox');
 
-    let allVisibleImages = [];
-    let currentImageIndex = 0;
-    let lastFocusedElement = null; // To store the element that triggered the modal
-
-    // ===== VISIBLE IMAGES CACHE SYSTEM =====
-    // Prevents redundant DOM queries when filtering/navigating (P1 Performance Fix)
-    // Cache is invalidated whenever filters change
-    let visibleImagesCache = null;
+    // Modal state variables are now in galleryState object (lines 115-122)
+    // - allVisibleImages, currentImageIndex, lastFocusedElement
+    // - visibleImagesCache, visibleCheckboxesCache
 
     function invalidateVisibleImagesCache() {
-        visibleImagesCache = null;
-        lastSelectedIndex = -1;  // Reset shift-select anchor when filters change
+        galleryState.visibleImagesCache = null;
+        galleryState.visibleCheckboxesCache = null;  // Also invalidate checkbox cache
+        galleryState.lastSelectedIndex = -1;  // Reset shift-select anchor when filters change
+    }
+
+    // Get visible checkboxes with caching for shift-select performance
+    function getVisibleCheckboxes() {
+        if (!galleryState.visibleCheckboxesCache) {
+            galleryState.visibleCheckboxesCache = Array.from(document.querySelectorAll('.select-checkbox'))
+                .filter(cb => cb.parentElement.style.display !== 'none');
+        }
+        return galleryState.visibleCheckboxesCache;
     }
 
     // Function to get all currently visible images (with caching)
     function getVisibleImages() {
-        if (!visibleImagesCache) {
-            visibleImagesCache = Array.from(document.querySelectorAll('.image-container img'))
+        if (!galleryState.visibleImagesCache) {
+            galleryState.visibleImagesCache = Array.from(document.querySelectorAll('.image-container img'))
                         .filter(img => img.parentElement.style.display !== 'none');
         }
-        return visibleImagesCache;
+        return galleryState.visibleImagesCache;
     }
 
     function openModal(event) {
         // Prevent the click event from propagating to the modal background
         event.stopPropagation();
 
-        allVisibleImages = getVisibleImages();
-        if (allVisibleImages.length === 0) {
+        galleryState.allVisibleImages = getVisibleImages();
+        if (galleryState.allVisibleImages.length === 0) {
             showNotification('No images available to display in modal.', true);
             return;
         }
 
         // Store the last focused element
-        lastFocusedElement = document.activeElement;
+        galleryState.lastFocusedElement = document.activeElement;
 
         // Get the image element from the parent container
         // Use event.target to find the clicked element (works with event delegation)
@@ -1086,14 +1125,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         const image = imageContainer.querySelector('img');
 
-        currentImageIndex = allVisibleImages.indexOf(image);
+        galleryState.currentImageIndex = galleryState.allVisibleImages.indexOf(image);
 
         // If the image is not found, default to the first image
-        if (currentImageIndex === -1) {
-            currentImageIndex = 0;
+        if (galleryState.currentImageIndex === -1) {
+            galleryState.currentImageIndex = 0;
         }
 
-        displayImage(currentImageIndex);
+        displayImage(galleryState.currentImageIndex);
         modal.classList.add('show');
         document.body.style.overflow = 'hidden';
         modal.setAttribute('tabindex', '-1');
@@ -1104,23 +1143,23 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function displayImage(index) {
-        allVisibleImages = getVisibleImages(); // Refresh the list in case filters have changed
-        if (allVisibleImages.length === 0) {
+        galleryState.allVisibleImages = getVisibleImages(); // Refresh the list in case filters have changed
+        if (galleryState.allVisibleImages.length === 0) {
             closeModal();
             return;
         }
 
         if (index < 0) {
-            currentImageIndex = allVisibleImages.length - 1; // Loop to last image
-        } else if (index >= allVisibleImages.length) {
-            currentImageIndex = 0; // Loop to first image
+            galleryState.currentImageIndex = galleryState.allVisibleImages.length - 1; // Loop to last image
+        } else if (index >= galleryState.allVisibleImages.length) {
+            galleryState.currentImageIndex = 0; // Loop to first image
         } else {
-            currentImageIndex = index;
+            galleryState.currentImageIndex = index;
         }
 
         // ===== COMPREHENSIVE NULL CHECKS (P0 Stability Fix) =====
         // Prevents crashes when filters change during modal navigation
-        const image = allVisibleImages[currentImageIndex];
+        const image = galleryState.allVisibleImages[galleryState.currentImageIndex];
         if (!image || !image.parentElement) {
             closeModal();
             showNotification('Image no longer visible due to filters', true);
@@ -1185,17 +1224,17 @@ document.addEventListener('DOMContentLoaded', function() {
         modal.classList.remove('show');
         document.body.style.overflow = 'auto';
         // Return focus to the last focused element
-        if (lastFocusedElement) {
-            lastFocusedElement.focus();
+        if (galleryState.lastFocusedElement) {
+            galleryState.lastFocusedElement.focus();
         }
     }
 
     function showPrevImage() {
-        displayImage(currentImageIndex - 1);
+        displayImage(galleryState.currentImageIndex - 1);
     }
 
     function showNextImage() {
-        displayImage(currentImageIndex + 1);
+        displayImage(galleryState.currentImageIndex + 1);
     }
 
     // ===== EVENT DELEGATION FOR ENLARGE BUTTONS (P0 Performance Fix) =====
@@ -1230,7 +1269,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 closeModal();
             } else if (event.key === 'h' || event.key === 'H') {
                 // 'h' key to hide/unhide current image
-                if (isHiddenMode) {
+                if (galleryState.isHiddenMode) {
                     unhideCurrentImage();
                 } else {
                     hideCurrentImage();
@@ -1305,9 +1344,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Handle modal checkbox changes
     modalSelectCheckbox.addEventListener('change', function() {
-        if (allVisibleImages.length === 0) return;
+        if (galleryState.allVisibleImages.length === 0) return;
 
-        const image = allVisibleImages[currentImageIndex];
+        const image = galleryState.allVisibleImages[galleryState.currentImageIndex];
         if (!image || !image.parentElement) return;  // Null check for safety
 
         const imageContainer = image.parentElement;
@@ -1423,7 +1462,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // CPU usage: ~90% reduction (from 100+ calls/sec to ~6 calls/sec)
     window.addEventListener('resize', debounce(function() {
         if (modal.classList.contains('show')) {
-            displayImage(currentImageIndex);
+            displayImage(galleryState.currentImageIndex);
         }
     }, 150));
 

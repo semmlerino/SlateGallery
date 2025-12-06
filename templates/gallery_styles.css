@@ -388,10 +388,15 @@ h1 {
     border-radius: 4px;
     background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 50%, #f5f5f5 100%);
     background-size: 200% 200%;
-    animation: shimmer 2s ease-in-out infinite;
+    /* animation moved to :not(.loaded) selector - stops GPU animation after load */
     transition: width 0.3s ease, opacity 0.3s ease;
     cursor: pointer;
     min-height: 100px; /* Prevent layout shift */
+}
+
+/* Shimmer animation only runs on unloaded images */
+.image-container img:not(.loaded) {
+    animation: shimmer 2s ease-in-out infinite;
 }
 
 @keyframes shimmer {
