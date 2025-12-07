@@ -18,8 +18,8 @@ sys.path.insert(0, str(os.path.dirname(os.path.abspath(__file__))))
 
 # Qt imports
 from PySide6 import QtWidgets
-from PySide6.QtCore import QRect, QSize, Qt, QTimer
-from PySide6.QtGui import QAbstractTextDocumentLayout, QColor, QTextDocument
+from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer
+from PySide6.QtGui import QAbstractTextDocumentLayout, QAction, QColor, QTextDocument
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
@@ -656,6 +657,9 @@ class GalleryGeneratorApp(QMainWindow):
             QtWidgets.QSizePolicy.Policy.Expanding,
             QtWidgets.QSizePolicy.Policy.Expanding
         )
+        # Enable context menu for opening slate folders
+        self.list_slates.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.list_slates.customContextMenuRequested.connect(self._on_slate_context_menu)
         list_buttons_layout.addWidget(self.list_slates)
 
         # Selection buttons
@@ -974,6 +978,48 @@ class GalleryGeneratorApp(QMainWindow):
         except Exception as e:
             self.update_status(f"Error during filter setup: {e}")
             logger.error(f"Error during filter setup: {e}", exc_info=True)
+
+    def _on_slate_context_menu(self, position: QPoint) -> None:
+        """Show context menu for slate list items."""
+        item = self.list_slates.itemAt(position)
+        if not item:
+            return
+
+        slate_name = str(item.data(Qt.ItemDataRole.UserRole))
+        slate_data = self.slates_dict.get(slate_name)
+
+        if not slate_data or not isinstance(slate_data, dict):
+            return
+
+        images = cast(list[str], slate_data.get("images", []))  # pyright: ignore[reportUnknownMemberType]
+        if not images:
+            return
+
+        folder_path = os.path.dirname(images[0])
+
+        menu = QMenu(self)
+        open_action = QAction("Open Folder in Explorer", self)
+        open_action.triggered.connect(lambda: self._open_folder(folder_path))
+        menu.addAction(open_action)
+
+        menu.exec(self.list_slates.viewport().mapToGlobal(position))
+
+    def _open_folder(self, folder_path: str) -> None:
+        """Open folder in system file explorer (cross-platform)."""
+        import platform
+        import subprocess
+
+        try:
+            if platform.system() == "Windows":
+                os.startfile(folder_path)  # pyright: ignore[reportAttributeAccessIssue]
+            elif platform.system() == "Darwin":  # macOS
+                subprocess.run(["open", folder_path], check=True)
+            else:  # Linux
+                subprocess.run(["xdg-open", folder_path], check=True)
+            logger.info(f"Opened folder: {folder_path}")
+        except Exception as e:
+            logger.error(f"Failed to open folder {folder_path}: {e}")
+            QMessageBox.warning(self, "Error", f"Could not open folder:\n{e}")
 
     def apply_filters_debounced(self) -> None:
         """Apply filters with performance monitoring and enhanced error handling."""
