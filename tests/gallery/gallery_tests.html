@@ -5919,7 +5919,7 @@
             let fixtures, containers;
             let visibleImagesCache = null;
             let visibleCheckboxesCache = null;
-            let lastSelectedIndex = -1;
+            let lastSelectedCheckbox = null;
 
             beforeEach(function() {
                 fixtures = document.getElementById('test-fixtures');
@@ -5928,7 +5928,7 @@
                 // Reset caches
                 visibleImagesCache = null;
                 visibleCheckboxesCache = null;
-                lastSelectedIndex = 2;
+                lastSelectedCheckbox = null;
 
                 // Create containers
                 containers = TestHelpers.createMockGallery(10);
@@ -5937,11 +5937,21 @@
 
             /**
              * Simulate invalidateVisibleImagesCache
+             * NOTE: Does NOT reset lastSelectedCheckbox - anchor element survives filter changes
              */
             function invalidateVisibleImagesCache() {
                 visibleImagesCache = null;
                 visibleCheckboxesCache = null;
-                lastSelectedIndex = -1;
+                // Anchor element reference is preserved - getAnchorIndex() will find its new position
+            }
+
+            /**
+             * Get anchor index by looking up the checkbox element in current visible list
+             */
+            function getAnchorIndex() {
+                if (!lastSelectedCheckbox) return -1;
+                const visibleCheckboxes = getVisibleCheckboxes();
+                return visibleCheckboxes.indexOf(lastSelectedCheckbox);
             }
 
             /**
@@ -5989,12 +5999,39 @@
                     expect(visibleCheckboxesCache).to.be.null;
                 });
 
-                it('should reset lastSelectedIndex on invalidation', function() {
-                    lastSelectedIndex = 5;
+                it('should preserve lastSelectedCheckbox on invalidation (anchor survives filter changes)', function() {
+                    // Set anchor to a specific checkbox
+                    const checkboxes = document.querySelectorAll('.select-checkbox');
+                    lastSelectedCheckbox = checkboxes[5];
 
                     invalidateVisibleImagesCache();
 
-                    expect(lastSelectedIndex).to.equal(-1);
+                    // Anchor element should be preserved
+                    expect(lastSelectedCheckbox).to.equal(checkboxes[5]);
+                    // But anchor index should still be findable via getAnchorIndex()
+                    expect(getAnchorIndex()).to.equal(5);
+                });
+
+                it('should return -1 for anchor index when anchor element is filtered out', function() {
+                    // Set anchor to a specific checkbox
+                    const checkboxes = document.querySelectorAll('.select-checkbox');
+                    lastSelectedCheckbox = checkboxes[3];
+
+                    // Verify anchor is findable initially
+                    expect(getAnchorIndex()).to.equal(3);
+
+                    // Filter out the anchor element by adding filtered-hidden class
+                    lastSelectedCheckbox.parentElement.classList.add('filtered-hidden');
+
+                    // Invalidate cache to pick up the filter change
+                    invalidateVisibleImagesCache();
+
+                    // Anchor element reference is preserved but index should be -1 (not visible)
+                    expect(lastSelectedCheckbox).to.not.be.null;
+                    expect(getAnchorIndex()).to.equal(-1);
+
+                    // Clean up
+                    lastSelectedCheckbox.parentElement.classList.remove('filtered-hidden');
                 });
             });
 
