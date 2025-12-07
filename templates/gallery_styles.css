@@ -742,6 +742,36 @@ h1 {
     background-color: #2E7D32;
 }
 
+/* Modal Folder Button */
+.modal-folder-button {
+    position: absolute;
+    top: 130px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #1976D2;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    z-index: 2100;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+
+.modal-folder-button:hover {
+    background-color: #1565C0;
+    transform: translateX(-50%) translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+}
+
+.modal-folder-button:active {
+    transform: translateX(-50%) translateY(0);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
 /* View Mode Controls */
 .view-mode-controls {
     position: fixed;

@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Selection system
         isSelectedMode: false,      // Toggle between normal gallery and selected images view
-        lastSelectedIndex: -1,      // Track last selected checkbox for shift-select range
+        lastSelectedCheckbox: null, // Track last selected checkbox element for shift-select range (survives filter changes)
 
         // Modal system (initialized later after DOM elements are available)
         allVisibleImages: [],       // Array of visible image elements
@@ -305,6 +305,54 @@ document.addEventListener('DOMContentLoaded', function() {
         updateCounts();
         updateHiddenCountBadge();
         filterImages();
+    }
+
+    // Copy containing folder path to clipboard
+    function copyCurrentImageFolder() {
+        if (galleryState.allVisibleImages.length === 0) return;
+
+        const image = galleryState.allVisibleImages[galleryState.currentImageIndex];
+        if (!image || !image.parentElement) return;
+
+        const imageContainer = image.parentElement;
+        const imagePath = imageContainer.getAttribute('data-full-image');
+
+        if (!imagePath) {
+            showNotification('Unable to determine image path', true);
+            return;
+        }
+
+        // Extract folder path
+        const lastSlashIndex = imagePath.lastIndexOf('/');
+        if (lastSlashIndex === -1) {
+            showNotification('Unable to extract folder path', true);
+            return;
+        }
+        const folderPath = imagePath.substring(0, lastSlashIndex);
+
+        // Copy to clipboard
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(folderPath).then(function() {
+                showNotification('Copied: ' + folderPath);
+                announceToScreenReader('Folder path copied to clipboard');
+            }).catch(function(err) {
+                showNotification('Failed to copy: ' + err, true);
+            });
+        } else {
+            // Fallback for older browsers
+            const textarea = document.createElement('textarea');
+            textarea.value = folderPath;
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                showNotification('Copied: ' + folderPath);
+                announceToScreenReader('Folder path copied to clipboard');
+            } catch (err) {
+                showNotification('Failed to copy: ' + err, true);
+            }
+            document.body.removeChild(textarea);
+        }
     }
 
     // Update modal hide button text and style based on mode
@@ -555,6 +603,9 @@ document.addEventListener('DOMContentLoaded', function() {
             hideCurrentImage();
         }
     });
+
+    // Event listener for copy folder button
+    document.getElementById('modal-folder-button').addEventListener('click', copyCurrentImageFolder);
 
     // Notification Function
     function showNotification(message, isError = false) {
@@ -1131,37 +1182,33 @@ document.addEventListener('DOMContentLoaded', function() {
             // Use cached visible checkboxes for performance
             const visibleCheckboxes = getVisibleCheckboxes();
             const currentIndex = visibleCheckboxes.indexOf(checkbox);
+            const anchorIndex = getAnchorIndex();
 
             // Handle shift-click for range selection
-            if (e.shiftKey && galleryState.lastSelectedIndex !== -1 && currentIndex !== -1) {
+            if (e.shiftKey && anchorIndex !== -1 && currentIndex !== -1) {
                 e.preventDefault(); // Prevent default checkbox behavior
 
-                // Determine if we're selecting or deselecting based on the FIRST checkbox state
-                // This ensures consistent behavior: if first checkbox is checked, select all in range
-                const firstCheckbox = visibleCheckboxes[galleryState.lastSelectedIndex];
-                const shouldCheck = firstCheckbox ? firstCheckbox.checked : true;
+                // Determine if we're selecting or deselecting based on the anchor checkbox state
+                // This ensures consistent behavior: if anchor checkbox is checked, select all in range
+                const shouldCheck = galleryState.lastSelectedCheckbox ? galleryState.lastSelectedCheckbox.checked : true;
 
                 // Set flag to prevent change handler from double-processing
                 galleryState.processingRangeSelect = true;
                 // Select/deselect the range
-                selectRange(galleryState.lastSelectedIndex, currentIndex, shouldCheck);
+                selectRange(anchorIndex, currentIndex, shouldCheck);
                 // Clear flag after range selection complete
                 galleryState.processingRangeSelect = false;
 
-                // NOTE: We do NOT update lastSelectedIndex here!
+                // NOTE: We do NOT update lastSelectedCheckbox here!
                 // The anchor point should stay at the original position so you can
                 // extend or shrink the selection by shift-clicking different positions
             } else if (e.ctrlKey || e.metaKey) {
                 // Ctrl/Cmd+click - toggle individual item and update anchor
-                if (currentIndex !== -1) {
-                    galleryState.lastSelectedIndex = currentIndex;
-                }
+                galleryState.lastSelectedCheckbox = checkbox;
                 // Let default checkbox behavior handle the actual toggle
             } else {
                 // Normal click - toggle checkbox (let default behavior happen) and set anchor
-                if (currentIndex !== -1) {
-                    galleryState.lastSelectedIndex = currentIndex;
-                }
+                galleryState.lastSelectedCheckbox = checkbox;
                 // Let default checkbox behavior handle the actual toggle
                 // The 'change' event handler below will update visual state
             }
@@ -1209,13 +1256,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Use cached visible checkboxes for performance
                 const visibleCheckboxes = getVisibleCheckboxes();
                 const currentIndex = visibleCheckboxes.indexOf(checkbox);
+                const anchorIndex = getAnchorIndex();
 
                 // Handle shift-click for range selection
-                if (e.shiftKey && galleryState.lastSelectedIndex !== -1) {
+                if (e.shiftKey && anchorIndex !== -1) {
                     if (currentIndex !== -1) {
-                        const firstCheckbox = visibleCheckboxes[galleryState.lastSelectedIndex];
-                        const shouldCheck = firstCheckbox ? firstCheckbox.checked : true;
-                        selectRange(galleryState.lastSelectedIndex, currentIndex, shouldCheck);
+                        const shouldCheck = galleryState.lastSelectedCheckbox ? galleryState.lastSelectedCheckbox.checked : true;
+                        selectRange(anchorIndex, currentIndex, shouldCheck);
                     }
                 } else if (e.ctrlKey || e.metaKey) {
                     // Ctrl/Cmd+click - toggle individual item
@@ -1227,7 +1274,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         checkbox.parentElement.classList.remove('selected');
                     }
                     // Update anchor for shift-select
-                    galleryState.lastSelectedIndex = currentIndex;
+                    galleryState.lastSelectedCheckbox = checkbox;
                     // Save and update
                     debouncedSave();
                     updateCounts();
@@ -1239,7 +1286,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     } else {
                         checkbox.parentElement.classList.remove('selected');
                     }
-                    galleryState.lastSelectedIndex = currentIndex;
+                    galleryState.lastSelectedCheckbox = checkbox;
                     debouncedSave();
                     updateCounts();
                 }
@@ -1263,7 +1310,17 @@ document.addEventListener('DOMContentLoaded', function() {
     function invalidateVisibleImagesCache() {
         galleryState.visibleImagesCache = null;
         galleryState.visibleCheckboxesCache = null;  // Also invalidate checkbox cache
-        galleryState.lastSelectedIndex = -1;  // Reset shift-select anchor when filters change
+        // NOTE: We intentionally do NOT reset lastSelectedCheckbox here.
+        // The anchor element reference survives filter changes - getAnchorIndex()
+        // will find its new position or return -1 if it's now filtered out.
+    }
+
+    // Get the current index of the shift-select anchor in the visible checkboxes list
+    // Returns -1 if no anchor is set or if the anchor is currently filtered out
+    function getAnchorIndex() {
+        if (!galleryState.lastSelectedCheckbox) return -1;
+        const visibleCheckboxes = getVisibleCheckboxes();
+        return visibleCheckboxes.indexOf(galleryState.lastSelectedCheckbox);
     }
 
     // Get visible checkboxes with caching for shift-select performance
@@ -1457,6 +1514,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     hideCurrentImage();
                 }
+            } else if (event.key === 'o' || event.key === 'O') {
+                // 'o' key to copy folder path
+                copyCurrentImageFolder();
             } else if (event.key === 'Tab') {
                 // Focus trap - keep focus within modal
                 const focusableElements = modal.querySelectorAll(
