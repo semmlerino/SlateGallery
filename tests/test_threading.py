@@ -1009,3 +1009,186 @@ class TestParallelSlateProcessing:
             valid_slates = ['slate_0', 'slate_1', 'slate_3']
             for slate_name in valid_slates:
                 assert slate_name in slates_result, f"Expected {slate_name} to be processed"
+
+
+class TestProcessItemsParallel:
+    """Test the process_items_parallel utility function."""
+
+    def test_empty_items_returns_empty_list(self):
+        """Empty input returns empty results without error."""
+        from src.utils.threading import process_items_parallel
+        import threading
+
+        stop_event = threading.Event()
+        results, cancelled = process_items_parallel([], lambda x: x, stop_event)
+
+        assert results == []
+        assert cancelled is False
+
+    def test_sequential_processing_for_small_counts(self):
+        """Items below threshold are processed sequentially."""
+        from src.utils.threading import process_items_parallel
+        import threading
+
+        stop_event = threading.Event()
+        items = [1, 2]  # Less than default threshold of 3
+        results, cancelled = process_items_parallel(
+            items,
+            lambda x: x * 2,
+            stop_event,
+            min_parallel_threshold=3
+        )
+
+        assert sorted(results) == [2, 4]
+        assert cancelled is False
+
+    def test_parallel_processing_for_large_counts(self):
+        """Items at or above threshold are processed in parallel."""
+        from src.utils.threading import process_items_parallel
+        import threading
+
+        stop_event = threading.Event()
+        items = [1, 2, 3, 4, 5]
+        results, cancelled = process_items_parallel(
+            items,
+            lambda x: x * 2,
+            stop_event,
+            min_parallel_threshold=3
+        )
+
+        assert sorted(results) == [2, 4, 6, 8, 10]
+        assert cancelled is False
+
+    def test_none_results_are_filtered(self):
+        """None results from process_func are not included."""
+        from src.utils.threading import process_items_parallel
+        import threading
+
+        stop_event = threading.Event()
+        items = [1, 2, 3, 4, 5]
+        # Return None for even numbers
+        results, cancelled = process_items_parallel(
+            items,
+            lambda x: x if x % 2 == 1 else None,
+            stop_event,
+            min_parallel_threshold=3
+        )
+
+        assert sorted(results) == [1, 3, 5]
+        assert cancelled is False
+
+    def test_stop_event_cancels_processing(self):
+        """Setting stop event cancels remaining processing."""
+        from src.utils.threading import process_items_parallel
+        import threading
+        import time
+
+        stop_event = threading.Event()
+        processed_items: list[int] = []
+
+        def slow_process(x: int) -> int:
+            if not stop_event.is_set():
+                time.sleep(0.1)  # Slow enough to allow cancellation
+            processed_items.append(x)
+            return x
+
+        items = list(range(10))
+
+        # Set stop event after a short delay
+        def set_stop():
+            time.sleep(0.05)
+            stop_event.set()
+
+        stop_thread = threading.Thread(target=set_stop)
+        stop_thread.start()
+
+        results, cancelled = process_items_parallel(
+            items,
+            slow_process,
+            stop_event,
+            min_parallel_threshold=3
+        )
+
+        stop_thread.join()
+
+        # Should have been cancelled
+        assert cancelled is True
+        # May have some results depending on timing
+        assert len(results) < len(items)
+
+    def test_progress_callback_is_called(self):
+        """Progress callback receives percentage updates."""
+        from src.utils.threading import process_items_parallel
+        import threading
+
+        stop_event = threading.Event()
+        progress_values: list[int] = []
+
+        def track_progress(p: int) -> None:
+            progress_values.append(p)
+
+        items = [1, 2, 3]
+        process_items_parallel(
+            items,
+            lambda x: x,
+            stop_event,
+            progress_callback=track_progress,
+            progress_start=0,
+            progress_end=100,
+            min_parallel_threshold=10  # Force sequential to test predictable progress
+        )
+
+        # Sequential processing should have 3 progress updates
+        assert len(progress_values) == 3
+        # Progress should increase
+        assert progress_values[-1] == 100
+
+    def test_progress_range_is_respected(self):
+        """Progress stays within specified start/end range."""
+        from src.utils.threading import process_items_parallel
+        import threading
+
+        stop_event = threading.Event()
+        progress_values: list[int] = []
+
+        def track_progress(p: int) -> None:
+            progress_values.append(p)
+
+        items = [1, 2]
+        process_items_parallel(
+            items,
+            lambda x: x,
+            stop_event,
+            progress_callback=track_progress,
+            progress_start=50,
+            progress_end=100,
+            min_parallel_threshold=10  # Force sequential
+        )
+
+        # Progress should be in range [50, 100]
+        assert all(50 <= p <= 100 for p in progress_values)
+        assert progress_values[-1] == 100
+
+    def test_exception_in_process_func_is_logged(self):
+        """Exceptions in parallel processing are caught and logged."""
+        from src.utils.threading import process_items_parallel
+        import threading
+
+        stop_event = threading.Event()
+
+        def failing_process(x: int) -> int:
+            if x == 3:
+                raise ValueError("Test error")
+            return x
+
+        items = [1, 2, 3, 4, 5]
+        results, cancelled = process_items_parallel(
+            items,
+            failing_process,
+            stop_event,
+            min_parallel_threshold=3
+        )
+
+        # Should still get results for non-failing items
+        assert sorted(results) == [1, 2, 4, 5]
+        assert cancelled is False

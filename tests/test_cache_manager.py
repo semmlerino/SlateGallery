@@ -126,9 +126,10 @@ class TestImprovedCacheManager:
 
         result = cache_manager.process_images_batch(image_paths)
 
+        # CachedImageInfo includes path, mtime, and exif fields
         expected = [
-            {'path': '/path/to/image1.jpg'},
-            {'path': '/path/to/image2.jpg'}
+            {'path': '/path/to/image1.jpg', 'mtime': 0.0, 'exif': {}},
+            {'path': '/path/to/image2.jpg', 'mtime': 0.0, 'exif': {}}
         ]
         assert result == expected
 
@@ -147,7 +148,8 @@ class TestImprovedCacheManager:
 
         result = cache_manager.process_images_batch(image_paths, _callback=test_callback)
 
-        assert result == [{'path': '/path/to/image1.jpg'}]
+        # CachedImageInfo includes path, mtime, and exif fields
+        assert result == [{'path': '/path/to/image1.jpg', 'mtime': 0.0, 'exif': {}}]
         # Currently callback isn't used in implementation, but test structure is ready
 
     def test_shutdown(self, cache_manager):

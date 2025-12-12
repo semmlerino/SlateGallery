@@ -7,44 +7,143 @@ import threading
 from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from datetime import datetime
-from typing import Optional, Protocol, Union, cast, runtime_checkable
+from typing import Optional, Protocol, TypeVar, Union, cast, runtime_checkable
 
 from PySide6 import QtCore
 from PySide6.QtCore import Signal
 from typing_extensions import override
 
-from .logging_config import log_function, logger
+from type_defs import (
+    CachedImageInfo,
+    DateData,
+    ExifData,
+    FocalLengthData,
+    ImageData,
+    ProcessedResults,
+    ScanResults,
+    ScanSlateData,
+    SlateData,
+)
 
-# Type aliases for better documentation (TypedDict imports cause circular dependencies)
-# These match the TypedDict definitions in core.gallery_generator
-# Note: Using object for values since the exact structure varies and is checked at runtime
-ImageData = dict[str, object]
-FocalLengthData = dict[str, object]  # Structure: {"value": float, "count": int}
-DateData = dict[str, object]  # Structure: {"value": str, "count": int, "display_date": str}
+from .logging_config import log_function, logger
 
 
 @runtime_checkable
 class CacheManagerProtocol(Protocol):
     """Protocol defining the interface for cache managers."""
     def process_images_batch(
-        self, image_paths: Sequence[object], _callback: Optional[Callable[[int], None]] = None
-    ) -> list[dict[str, object]]:
+        self, image_paths: Sequence[str], _callback: Optional[Callable[[int], None]] = None
+    ) -> list[CachedImageInfo]:
         ...
 
     def process_images_batch_with_exif(
         self,
         image_paths: Sequence[str],
-        existing_cache: Optional[dict[str, dict[str, object]]] = None,
+        existing_cache: Optional[ProcessedResults] = None,
         _callback: Optional[Callable[[int], None]] = None,
         stop_event: Optional[threading.Event] = None,
-    ) -> list[dict[str, object]]:
+    ) -> list[CachedImageInfo]:
         ...
 
-    def save_cache(self, root_dir: str, slates: object) -> None:
+    def save_cache(self, root_dir: str, slates: ProcessedResults) -> None:
         ...
 
-    def save_composite_cache(self, root_dirs: list[str], slates: object) -> None:
+    def save_composite_cache(self, root_dirs: list[str], slates: ProcessedResults) -> None:
         ...
+
+
+# ----------------------------- Parallel Processing Utility -----------------------------
+
+# Type variables for generic parallel processing
+T = TypeVar("T")  # Input item type
+R = TypeVar("R")  # Result type
+
+
+def process_items_parallel(
+    items: Sequence[T],
+    process_func: Callable[[T], Optional[R]],
+    stop_event: threading.Event,
+    *,
+    progress_callback: Optional[Callable[[int], None]] = None,
+    progress_start: int = 0,
+    progress_end: int = 100,
+    min_parallel_threshold: int = 3,
+    max_workers: Optional[int] = None,
+) -> tuple[list[R], bool]:
+    """Process items in parallel with consistent stop-event handling.
+
+    Encapsulates the common pattern of:
+    - Sequential vs parallel decision based on item count
+    - ThreadPoolExecutor setup with worker limit
+    - Stop event checking and future cancellation
+    - Progress calculation and reporting
+
+    Args:
+        items: Sequence of items to process
+        process_func: Function to process each item, returns None to skip
+        stop_event: Event to check for cancellation
+        progress_callback: Optional callback for progress updates (receives percentage)
+        progress_start: Starting progress percentage (default 0)
+        progress_end: Ending progress percentage (default 100)
+        min_parallel_threshold: Use sequential if fewer items (default 3)
+        max_workers: Max worker threads (defaults to cpu_count)
+
+    Returns:
+        Tuple of (results list, was_cancelled bool)
+        Results list contains only non-None returns from process_func
+    """
+    total = len(items)
+    if total == 0:
+        return [], False
+
+    results: list[R] = []
+
+    # Sequential path for small item counts (avoids ThreadPoolExecutor overhead)
+    if total < min_parallel_threshold:
+        for i, item in enumerate(items):
+            if stop_event.is_set():
+                return results, True
+
+            result = process_func(item)
+            if result is not None:
+                results.append(result)
+
+            if progress_callback:
+                progress = progress_start + int(((i + 1) / total) * (progress_end - progress_start))
+                progress_callback(progress)
+
+        return results, False
+
+    # Parallel path
+    effective_max_workers = max_workers if max_workers else min(total, multiprocessing.cpu_count())
+    completed_count = 0
+
+    with ThreadPoolExecutor(max_workers=effective_max_workers) as executor:
+        future_to_item: dict[Future[Optional[R]], T] = {
+            executor.submit(process_func, item): item for item in items
+        }
+
+        for future in as_completed(future_to_item):
+            if stop_event.is_set():
+                # Cancel pending futures
+                for pending_future in future_to_item:
+                    pending_future.cancel()
+                executor.shutdown(wait=False, cancel_futures=True)
+                return results, True
+
+            try:
+                result = future.result()
+                if result is not None:
+                    results.append(result)
+            except Exception as e:
+                logger.error(f"Error processing item: {e}", exc_info=True)
+
+            completed_count += 1
+            if progress_callback:
+                progress = progress_start + int((completed_count / total) * (progress_end - progress_start))
+                progress_callback(progress)
+
+    return results, False
 
 # ----------------------------- Worker Threads -----------------------------
 
@@ -135,174 +234,182 @@ class ScanThread(QtCore.QThread):
     @log_function
     @override
     def run(self) -> None:
+        """Execute directory scan in three phases: scan, EXIF processing, cache save."""
         try:
-            from core.image_processor import scan_directories
+            slates = self._scan_directories()
+            if slates is None:
+                return
 
-            logger.info(f"Starting directory scan for {len(self.root_dirs)} root directory(ies)...")
+            if not self._process_exif(slates):
+                return
 
-            # Use appropriate scanning method based on number of directories
-            if len(self.root_dirs) == 1:
-                # Legacy single-directory mode
-                logger.info(f"Scanning single directory: {self.root_dirs[0]}")
-                slates = scan_directories(self.root_dirs[0], self.exclude_patterns)
-            else:
-                # Multi-directory concurrent scanning mode
-                logger.info(f"Scanning {len(self.root_dirs)} directories concurrently...")
-
-                # Limit concurrent scans to avoid overwhelming I/O
-                max_workers = min(len(self.root_dirs), multiprocessing.cpu_count())
-
-                # Execute concurrent scans using module-level helper function
-                merged_slates: dict[str, dict[str, list[str]]] = {}
-                completed_dirs = 0
-
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    # Submit all scan tasks
-                    future_to_dir = {
-                        executor.submit(_scan_single_root_dir, root_dir, self.exclude_patterns): root_dir
-                        for root_dir in self.root_dirs
-                    }
-
-                    # Process results as they complete
-                    for future in as_completed(future_to_dir):
-                        if self._stop_event.is_set():
-                            logger.info("Scan thread stopped by user request")
-                            # Cancel any pending futures (works on Python 3.9+, ignored on older)
-                            for pending_future in future_to_dir:
-                                pending_future.cancel()
-                            # Shutdown executor without waiting for running tasks
-                            executor.shutdown(wait=False, cancel_futures=True)
-                            self.scan_complete.emit({}, "Scan cancelled.")
-                            return
-
-                        root_dir = future_to_dir[future]
-                        try:
-                            result_slates = future.result()
-
-                            # Merge results, handling name conflicts
-                            for slate_name, slate_data in result_slates.items():
-                                original_name = slate_name
-                                counter = 2
-                                while slate_name in merged_slates:
-                                    slate_name = f"{original_name}_{counter}"
-                                    counter += 1
-                                    logger.warning(f"Slate name conflict: renamed {original_name} to {slate_name}")
-                                merged_slates[slate_name] = slate_data
-
-                            completed_dirs += 1
-                            progress = int((completed_dirs / len(self.root_dirs)) * 50)  # First 50% is scanning
-                            self.progress.emit(progress)
-                            logger.info(f"Completed scan of {root_dir} ({completed_dirs}/{len(self.root_dirs)})")
-                        except Exception as e:
-                            logger.error(f"Error scanning {root_dir}: {e}", exc_info=True)
-                            completed_dirs += 1
-
-                slates = merged_slates
-                logger.info(f"Concurrent scan complete: {len(slates)} total slates from {len(self.root_dirs)} directories")
-
-            # Process EXIF data for all slates (with caching)
-            total_slates: int = len(slates)
-            logger.debug(f"Total slates to process: {total_slates}")
-
-            # Use parallel slate processing for 3+ slates, sequential for 1-2
-            if total_slates < 3:
-                # Sequential path for small slate counts (avoids ThreadPoolExecutor overhead)
-                for processed_slates, (_slate, data) in enumerate(slates.items(), start=1):
-                    # Check if we should stop
-                    if self._stop_event.is_set():
-                        logger.info("Scan thread stopped by user request")
-                        self.scan_complete.emit({}, "Scan cancelled.")
-                        return
-
-                    image_paths = data.get("images", [])
-                    # Use EXIF-aware processing to cache metadata
-                    processed_images = self.cache_manager.process_images_batch_with_exif(
-                        [str(p) for p in image_paths],
-                        existing_cache=None,  # Fresh scan, no existing cache
-                        _callback=lambda p: self.progress.emit(50 + int(p / 2)),  # Second 50% is EXIF processing
-                        stop_event=self._stop_event,
-                    )
-                    data["images"] = processed_images  # pyright: ignore[reportArgumentType]
-
-                    # Progress: 50-100% for EXIF processing
-                    exif_progress: float = (
-                        50 + ((processed_slates / float(total_slates)) * 50) if total_slates > 0 else 100
-                    )
-                    self.progress.emit(int(exif_progress))
-                    logger.debug(f"EXIF processing progress: {exif_progress:.2f}%")
-            else:
-                # Parallel slate processing for 3+ slates
-                logger.info(f"Processing {total_slates} slates in parallel for EXIF extraction")
-                max_slate_workers = min(total_slates, multiprocessing.cpu_count())
-                logger.info(f"Using {max_slate_workers} workers for slate-level parallelism")
-
-                def process_slate_exif(slate_name: str, slate_data: object) -> tuple[str, list[dict[str, object]]]:
-                    """Process EXIF for a single slate (runs in worker thread)."""
-                    if self._stop_event.is_set():
-                        return (slate_name, [])
-
-                    if not isinstance(slate_data, dict):
-                        return (slate_name, [])
-
-                    slate_dict = cast(dict[str, object], slate_data)
-                    image_paths_val = slate_dict.get("images", [])
-                    if not isinstance(image_paths_val, list):
-                        return (slate_name, [])
-                    image_paths_list = cast(list[object], image_paths_val)
-
-                    processed_images = self.cache_manager.process_images_batch_with_exif(
-                        [str(p) for p in image_paths_list],
-                        existing_cache=None,
-                        _callback=None,  # No per-image callback in parallel mode
-                        stop_event=self._stop_event,
-                    )
-                    return (slate_name, processed_images)
-
-                completed_count = 0
-                with ThreadPoolExecutor(max_workers=max_slate_workers) as executor:
-                    # Submit all slate processing tasks
-                    future_to_slate = {
-                        executor.submit(process_slate_exif, slate_name, slate_data): slate_name
-                        for slate_name, slate_data in slates.items()
-                    }
-
-                    # Collect results as they complete
-                    for future in as_completed(future_to_slate):
-                        if self._stop_event.is_set():
-                            logger.info("Scan thread stopped during parallel EXIF processing")
-                            for pending_future in future_to_slate:
-                                pending_future.cancel()
-                            executor.shutdown(wait=False, cancel_futures=True)
-                            self.scan_complete.emit({}, "Scan cancelled.")
-                            return
-
-                        slate_name = future_to_slate[future]
-                        try:
-                            slate_name_result, processed_images = future.result()
-                            slates[slate_name_result]["images"] = processed_images  # pyright: ignore[reportArgumentType]
-
-                            completed_count += 1
-                            exif_progress = 50 + ((completed_count / total_slates) * 50)
-                            self.progress.emit(int(exif_progress))
-                            logger.debug(f"Completed EXIF for slate {slate_name_result} ({completed_count}/{total_slates})")
-                        except Exception as e:
-                            logger.error(f"Error processing EXIF for slate {slate_name}: {e}", exc_info=True)
-                            completed_count += 1
-
-                logger.info(f"Parallel EXIF processing complete: {completed_count} slates processed")
-
-            # Save the scanned slates to cache
-            if len(self.root_dirs) == 1:
-                self.cache_manager.save_cache(self.root_dirs[0], slates)
-            else:
-                self.cache_manager.save_composite_cache(self.root_dirs, slates)
-
+            # Note: slates has been mutated in-place from ScanResults to ProcessedResults
+            self._save_cache(slates)  # pyright: ignore[reportArgumentType]
             self.scan_complete.emit(slates, "Scan complete.")
             logger.info("Scan completed.")
         except Exception as e:
             error_message: str = f"Error during directory scan: {e}"
             logger.error(error_message, exc_info=True)
             self.scan_complete.emit({}, error_message)
+
+    def _scan_directories(self) -> Optional[ScanResults]:
+        """Phase 1: Scan directories for images.
+
+        Returns:
+            ScanResults dict if successful, None if cancelled
+        """
+        from core.image_processor import scan_directories
+
+        logger.info(f"Starting directory scan for {len(self.root_dirs)} root directory(ies)...")
+
+        # Single-directory mode
+        if len(self.root_dirs) == 1:
+            logger.info(f"Scanning single directory: {self.root_dirs[0]}")
+            # scan_directories returns structurally compatible dict
+            return scan_directories(self.root_dirs[0], self.exclude_patterns)  # pyright: ignore[reportReturnType]
+
+        # Multi-directory concurrent scanning mode
+        logger.info(f"Scanning {len(self.root_dirs)} directories concurrently...")
+        max_workers = min(len(self.root_dirs), multiprocessing.cpu_count())
+
+        merged_slates: dict[str, dict[str, list[str]]] = {}
+        completed_dirs = 0
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_dir = {
+                executor.submit(_scan_single_root_dir, root_dir, self.exclude_patterns): root_dir
+                for root_dir in self.root_dirs
+            }
+
+            for future in as_completed(future_to_dir):
+                if self._stop_event.is_set():
+                    logger.info("Scan thread stopped by user request")
+                    for pending_future in future_to_dir:
+                        pending_future.cancel()
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    self.scan_complete.emit({}, "Scan cancelled.")
+                    return None
+
+                root_dir = future_to_dir[future]
+                try:
+                    result_slates = future.result()
+
+                    # Merge results, handling name conflicts
+                    for slate_name, slate_data in result_slates.items():
+                        original_name = slate_name
+                        counter = 2
+                        while slate_name in merged_slates:
+                            slate_name = f"{original_name}_{counter}"
+                            counter += 1
+                            logger.warning(f"Slate name conflict: renamed {original_name} to {slate_name}")
+                        merged_slates[slate_name] = slate_data
+
+                    completed_dirs += 1
+                    progress = int((completed_dirs / len(self.root_dirs)) * 50)
+                    self.progress.emit(progress)
+                    logger.info(f"Completed scan of {root_dir} ({completed_dirs}/{len(self.root_dirs)})")
+                except Exception as e:
+                    logger.error(f"Error scanning {root_dir}: {e}", exc_info=True)
+                    completed_dirs += 1
+
+        logger.info(f"Concurrent scan complete: {len(merged_slates)} total slates from {len(self.root_dirs)} directories")
+        # merged_slates is structurally compatible with ScanResults
+        return merged_slates  # pyright: ignore[reportReturnType]
+
+    def _process_exif(self, slates: ScanResults) -> bool:
+        """Phase 2: Process EXIF data for all slates.
+
+        Mutates slates in-place, converting ScanResults to ProcessedResults.
+
+        Args:
+            slates: Scan results to process
+
+        Returns:
+            True if completed, False if cancelled
+        """
+        total_slates: int = len(slates)
+        logger.debug(f"Total slates to process: {total_slates}")
+
+        if total_slates == 0:
+            return True
+
+        # Sequential path for small slate counts (avoids ThreadPoolExecutor overhead)
+        if total_slates < 3:
+            for processed_slates, (_slate, data) in enumerate(slates.items(), start=1):
+                if self._stop_event.is_set():
+                    logger.info("Scan thread stopped by user request")
+                    self.scan_complete.emit({}, "Scan cancelled.")
+                    return False
+
+                image_paths = data.get("images", [])
+                processed_images = self.cache_manager.process_images_batch_with_exif(
+                    [str(p) for p in image_paths],
+                    existing_cache=None,
+                    _callback=lambda p: self.progress.emit(50 + int(p / 2)),
+                    stop_event=self._stop_event,
+                )
+                data["images"] = processed_images  # pyright: ignore[reportGeneralTypeIssues]
+
+                exif_progress: float = 50 + ((processed_slates / float(total_slates)) * 50)
+                self.progress.emit(int(exif_progress))
+                logger.debug(f"EXIF processing progress: {exif_progress:.2f}%")
+
+            return True
+
+        # Parallel slate processing for 3+ slates
+        logger.info(f"Processing {total_slates} slates in parallel for EXIF extraction")
+        max_slate_workers = min(total_slates, multiprocessing.cpu_count())
+        logger.info(f"Using {max_slate_workers} workers for slate-level parallelism")
+
+        def process_slate_exif(slate_item: tuple[str, ScanSlateData]) -> tuple[str, list[CachedImageInfo]]:
+            """Process EXIF for a single slate (runs in worker thread)."""
+            slate_name, slate_data = slate_item
+            if self._stop_event.is_set():
+                return (slate_name, [])
+
+            image_paths = slate_data.get("images", [])
+            processed_images = self.cache_manager.process_images_batch_with_exif(
+                [str(p) for p in image_paths],
+                existing_cache=None,
+                _callback=None,
+                stop_event=self._stop_event,
+            )
+            return (slate_name, processed_images)
+
+        # Use process_items_parallel utility
+        results, cancelled = process_items_parallel(
+            list(slates.items()),
+            process_slate_exif,
+            self._stop_event,
+            progress_callback=lambda p: self.progress.emit(p),
+            progress_start=50,
+            progress_end=100,
+            min_parallel_threshold=3,
+            max_workers=max_slate_workers,
+        )
+
+        if cancelled:
+            logger.info("Scan thread stopped during parallel EXIF processing")
+            self.scan_complete.emit({}, "Scan cancelled.")
+            return False
+
+        # Merge results back into slates dict
+        for slate_name, processed_images in results:
+            slates[slate_name]["images"] = processed_images  # pyright: ignore[reportGeneralTypeIssues]
+
+        logger.info(f"Parallel EXIF processing complete: {len(results)} slates processed")
+        return True
+
+    def _save_cache(self, slates: ProcessedResults) -> None:
+        """Phase 3: Save processed slates to cache.
+
+        Args:
+            slates: Processed results to save
+        """
+        if len(self.root_dirs) == 1:
+            self.cache_manager.save_cache(self.root_dirs[0], slates)
+        else:
+            self.cache_manager.save_composite_cache(self.root_dirs, slates)
 
 
 class GenerateGalleryThread(QtCore.QThread):
@@ -312,7 +419,7 @@ class GenerateGalleryThread(QtCore.QThread):
     def __init__(
         self,
         selected_slates: list[str],
-        slates_dict: dict[str, object],
+        slates_dict: ProcessedResults,
         cache_manager: CacheManagerProtocol,
         output_dir: str,
         allowed_root_dirs: Union[str, list[str]],
@@ -336,7 +443,7 @@ class GenerateGalleryThread(QtCore.QThread):
         """
         super().__init__()
         self.selected_slates: list[str] = selected_slates
-        self.slates_dict: dict[str, object] = slates_dict
+        self.slates_dict: ProcessedResults = slates_dict
         self.cache_manager: CacheManagerProtocol = cache_manager
         self.output_dir: str = output_dir
         self.allowed_root_dirs: Union[str, list[str]] = allowed_root_dirs
@@ -390,202 +497,194 @@ class GenerateGalleryThread(QtCore.QThread):
 
     @override
     def run(self) -> None:
+        """Execute gallery generation in phases: process slates, generate HTML."""
         try:
             logger.info("Generating Gallery...")
             self.progress.emit(0)
 
-            gallery_slates: list[dict[str, object]] = []
-            total_slates: int = len(self.selected_slates)
-            logger.info(f"Total slates selected: {total_slates}")
-
-            # Use parallel slate processing for 3+ slates, sequential for 1-2
-            if total_slates < 3:
-                # Sequential path for small slate counts (avoids overhead)
-                for processed_slates, slate in enumerate(self.selected_slates, start=1):
-                    # Check if we should stop
-                    if self._stop_event.is_set():
-                        logger.info("Gallery generation thread stopped by user request")
-                        self.gallery_complete.emit(False, "Gallery generation cancelled.")
-                        return
-
-                    slate_data_val = self.slates_dict.get(slate)
-                    images: list[object] = []
-                    if isinstance(slate_data_val, dict):
-                        images_val = cast(dict[str, object], slate_data_val).get("images")
-                        if isinstance(images_val, list):
-                            images = cast(list[object], images_val)
-
-                    # Always use parallel processing for better performance
-                    # Even without thumbnails, we still need to extract EXIF data in parallel
-                    slate_images: list[ImageData]
-                    if len(images) > 1:
-                        slate_images = self.process_images_parallel(images)  # type: ignore[arg-type]
-                    else:
-                        # Only use sequential for single image (rare case)
-                        slate_images = []
-                        for image in images:
-                            if not isinstance(image, dict):
-                                continue
-                            # Skip macOS resource fork files
-                            image_dict = cast(dict[str, object], image)
-                            image_path_val = image_dict.get("path")
-                            if not isinstance(image_path_val, str):
-                                continue
-                            if os.path.basename(image_path_val).startswith("._"):
-                                logger.debug(f"Skipping macOS resource fork file: {image_path_val}")
-                                continue
-                            # Get cached EXIF if available
-                            exif_val = image_dict.get("exif")
-                            cached_exif: Optional[dict[str, object]] = cast(dict[str, object], exif_val) if isinstance(exif_val, dict) else None
-                            image_data: Optional[ImageData] = self.process_image(image_path_val, cached_exif)
-                            if image_data is not None:
-                                slate_images.append(image_data)
-
-                    if slate_images:
-                        gallery_slates.append({"slate": slate, "images": slate_images})
-
-                    progress: float = (
-                        (processed_slates / float(total_slates)) * 80 if total_slates > 0 else 80
-                    )
-                    self.progress.emit(int(progress))
-                    logger.info(f"Metadata extraction progress: {progress:.2f}%")
-            else:
-                # Parallel slate processing for 3+ slates
-                logger.info(f"Processing {total_slates} slates in parallel for gallery generation")
-                max_slate_workers = min(total_slates, multiprocessing.cpu_count())
-                logger.info(f"Using {max_slate_workers} workers for slate-level parallelism")
-
-                def process_slate_images(slate_name: str) -> Optional[dict[str, object]]:
-                    """Process all images in a single slate (runs in worker thread)."""
-                    if self._stop_event.is_set():
-                        return None
-
-                    slate_data_val = self.slates_dict.get(slate_name)
-                    images: list[object] = []
-                    if isinstance(slate_data_val, dict):
-                        images_val = cast(dict[str, object], slate_data_val).get("images")
-                        if isinstance(images_val, list):
-                            images = cast(list[object], images_val)
-
-                    slate_images: list[ImageData]
-                    if len(images) > 1:
-                        slate_images = self.process_images_parallel(images)  # type: ignore[arg-type]
-                    else:
-                        # Sequential for single image
-                        slate_images = []
-                        for image in images:
-                            if not isinstance(image, dict):
-                                continue
-                            image_dict = cast(dict[str, object], image)
-                            image_path_val = image_dict.get("path")
-                            if not isinstance(image_path_val, str):
-                                continue
-                            if os.path.basename(image_path_val).startswith("._"):
-                                logger.debug(f"Skipping macOS resource fork file: {image_path_val}")
-                                continue
-                            exif_val = image_dict.get("exif")
-                            cached_exif: Optional[dict[str, object]] = cast(dict[str, object], exif_val) if isinstance(exif_val, dict) else None
-                            image_data_result: Optional[ImageData] = self.process_image(image_path_val, cached_exif)
-                            if image_data_result is not None:
-                                slate_images.append(image_data_result)
-
-                    if slate_images:
-                        return {"slate": slate_name, "images": slate_images}
-                    return None
-
-                completed_count = 0
-                with ThreadPoolExecutor(max_workers=max_slate_workers) as executor:
-                    # Submit all slate processing tasks
-                    future_to_slate = {
-                        executor.submit(process_slate_images, slate): slate
-                        for slate in self.selected_slates
-                    }
-
-                    # Collect results as they complete
-                    for future in as_completed(future_to_slate):
-                        if self._stop_event.is_set():
-                            logger.info("Gallery generation stopped during parallel slate processing")
-                            for pending_future in future_to_slate:
-                                pending_future.cancel()
-                            executor.shutdown(wait=False, cancel_futures=True)
-                            self.gallery_complete.emit(False, "Gallery generation cancelled.")
-                            return
-
-                        slate_name = future_to_slate[future]
-                        try:
-                            result = future.result()
-                            if result is not None:
-                                gallery_slates.append(result)
-
-                            completed_count += 1
-                            progress_val = (completed_count / total_slates) * 80
-                            self.progress.emit(int(progress_val))
-                            logger.info(f"Completed slate {slate_name} ({completed_count}/{total_slates})")
-                        except Exception as e:
-                            logger.error(f"Error processing slate {slate_name}: {e}", exc_info=True)
-                            completed_count += 1
-
-                logger.info(f"Parallel slate processing complete: {completed_count} slates processed")
+            gallery_slates = self._process_all_slates()
+            if gallery_slates is None:
+                return
 
             self.progress.emit(80)
-            # Import here to avoid circular imports
-            from core.gallery_generator import generate_html_gallery
 
-            # Convert focal length counts to structured data sorted by focal length value
-            focal_length_data: list[FocalLengthData] = [
-                {"value": focal_length, "count": count}
-                for focal_length, count in sorted(self.focal_length_counts.items())
-            ]
-
-            # Add "Unknown" option if there are images without focal length
-            if self.unknown_focal_length_count > 0:
-                focal_length_data.append({
-                    "value": "unknown",  # type: ignore[typeddict-item]
-                    "count": self.unknown_focal_length_count,
-                })
-
-            # Convert date counts to structured data sorted by date
-            date_data: list[DateData] = [
-                {"value": date_key, "count": count, "display_date": self._format_date_for_display(date_key)}
-                for date_key, count in sorted(self.date_counts.items())
-            ]
-
-            # Add "Unknown Date" option if there are images without EXIF dates
-            if self.unknown_date_count > 0:
-                date_data.append({
-                    "value": "unknown",
-                    "count": self.unknown_date_count,
-                    "display_date": "Unknown Date"
-                })
-
-            success, gallery_skipped = generate_html_gallery(
-                gallery_slates,  # pyright: ignore[reportArgumentType]
-                focal_length_data,  # pyright: ignore[reportArgumentType]
-                date_data,  # pyright: ignore[reportArgumentType]
-                self.template_path,
-                self.output_dir,
-                self.allowed_root_dirs,
-                self.emit_status,
-                self.lazy_loading,
-            )
-            self.skipped_images += gallery_skipped
-            if success:
-                if self.skipped_images > 0:
-                    message: str = f"Gallery generated ({self.skipped_images} image(s) skipped due to errors)"
-                else:
-                    message = "Gallery generated."
-                self.progress.emit(100)
-                logger.info(message)
-                self.gallery_complete.emit(True, message)
-            else:
-                message = "Gallery generation failed."
-                logger.warning(message)
-                self.gallery_complete.emit(False, message)
+            success = self._generate_html(gallery_slates)
+            self._emit_completion(success)
 
         except Exception as e:
             error_message: str = f"Error during gallery generation: {e}"
             logger.error(error_message, exc_info=True)
             self.gallery_complete.emit(False, error_message)
+
+    def _process_single_slate(self, slate_name: str) -> Optional[SlateData]:
+        """Process all images in a single slate.
+
+        Args:
+            slate_name: Name of the slate to process
+
+        Returns:
+            SlateData if slate has images, None otherwise
+        """
+        if self._stop_event.is_set():
+            return None
+
+        slate_data_val = self.slates_dict.get(slate_name)
+        images: list[object] = []
+        if isinstance(slate_data_val, dict):
+            images_val = cast(dict[str, object], slate_data_val).get("images")
+            if isinstance(images_val, list):
+                images = cast(list[object], images_val)
+
+        slate_images: list[ImageData]
+        if len(images) > 1:
+            slate_images = self.process_images_parallel(images)  # type: ignore[arg-type]
+        else:
+            # Sequential for single image
+            slate_images = []
+            for image in images:
+                if not isinstance(image, dict):
+                    continue
+                image_dict = cast(dict[str, object], image)
+                image_path_val = image_dict.get("path")
+                if not isinstance(image_path_val, str):
+                    continue
+                if os.path.basename(image_path_val).startswith("._"):
+                    logger.debug(f"Skipping macOS resource fork file: {image_path_val}")
+                    continue
+                exif_val = image_dict.get("exif")
+                cached_exif: Optional[ExifData] = cast(ExifData, exif_val) if isinstance(exif_val, dict) else None
+                image_data: Optional[ImageData] = self.process_image(image_path_val, cached_exif)
+                if image_data is not None:
+                    slate_images.append(image_data)
+
+        if slate_images:
+            return {"slate": slate_name, "images": slate_images}
+        return None
+
+    def _process_all_slates(self) -> Optional[list[SlateData]]:
+        """Phase 1: Process all selected slates.
+
+        Returns:
+            List of SlateData if successful, None if cancelled
+        """
+        gallery_slates: list[SlateData] = []
+        total_slates: int = len(self.selected_slates)
+        logger.info(f"Total slates selected: {total_slates}")
+
+        if total_slates == 0:
+            return gallery_slates
+
+        # Sequential path for small slate counts (avoids overhead)
+        if total_slates < 3:
+            for processed_count, slate in enumerate(self.selected_slates, start=1):
+                if self._stop_event.is_set():
+                    logger.info("Gallery generation thread stopped by user request")
+                    self.gallery_complete.emit(False, "Gallery generation cancelled.")
+                    return None
+
+                result = self._process_single_slate(slate)
+                if result is not None:
+                    gallery_slates.append(result)
+
+                progress: float = (processed_count / float(total_slates)) * 80
+                self.progress.emit(int(progress))
+                logger.info(f"Metadata extraction progress: {progress:.2f}%")
+
+            return gallery_slates
+
+        # Parallel slate processing for 3+ slates
+        logger.info(f"Processing {total_slates} slates in parallel for gallery generation")
+        max_slate_workers = min(total_slates, multiprocessing.cpu_count())
+        logger.info(f"Using {max_slate_workers} workers for slate-level parallelism")
+
+        results, cancelled = process_items_parallel(
+            self.selected_slates,
+            self._process_single_slate,
+            self._stop_event,
+            progress_callback=lambda p: self.progress.emit(p),
+            progress_start=0,
+            progress_end=80,
+            min_parallel_threshold=3,
+            max_workers=max_slate_workers,
+        )
+
+        if cancelled:
+            logger.info("Gallery generation stopped during parallel slate processing")
+            self.gallery_complete.emit(False, "Gallery generation cancelled.")
+            return None
+
+        logger.info(f"Parallel slate processing complete: {len(results)} slates processed")
+        return results
+
+    def _generate_html(self, gallery_slates: list[SlateData]) -> bool:
+        """Phase 2: Generate HTML gallery from processed slates.
+
+        Args:
+            gallery_slates: List of processed slate data
+
+        Returns:
+            True if successful, False otherwise
+        """
+        from core.gallery_generator import generate_html_gallery
+
+        # Convert focal length counts to structured data sorted by focal length value
+        focal_length_data: list[FocalLengthData] = [
+            {"value": focal_length, "count": count}
+            for focal_length, count in sorted(self.focal_length_counts.items())
+        ]
+
+        # Add "Unknown" option if there are images without focal length
+        if self.unknown_focal_length_count > 0:
+            focal_length_data.append({
+                "value": "unknown",  # type: ignore[typeddict-item]
+                "count": self.unknown_focal_length_count,
+            })
+
+        # Convert date counts to structured data sorted by date
+        date_data: list[DateData] = [
+            {"value": date_key, "count": count, "display_date": self._format_date_for_display(date_key)}
+            for date_key, count in sorted(self.date_counts.items())
+        ]
+
+        # Add "Unknown Date" option if there are images without EXIF dates
+        if self.unknown_date_count > 0:
+            date_data.append({
+                "value": "unknown",
+                "count": self.unknown_date_count,
+                "display_date": "Unknown Date"
+            })
+
+        success, gallery_skipped = generate_html_gallery(
+            gallery_slates,  # pyright: ignore[reportArgumentType]
+            focal_length_data,  # pyright: ignore[reportArgumentType]
+            date_data,  # pyright: ignore[reportArgumentType]
+            self.template_path,
+            self.output_dir,
+            self.allowed_root_dirs,
+            self.emit_status,
+            self.lazy_loading,
+        )
+        self.skipped_images += gallery_skipped
+        return success
+
+    def _emit_completion(self, success: bool) -> None:
+        """Emit completion signal with appropriate message.
+
+        Args:
+            success: Whether gallery generation succeeded
+        """
+        if success:
+            if self.skipped_images > 0:
+                message: str = f"Gallery generated ({self.skipped_images} image(s) skipped due to errors)"
+            else:
+                message = "Gallery generated."
+            self.progress.emit(100)
+            logger.info(message)
+            self.gallery_complete.emit(True, message)
+        else:
+            message = "Gallery generation failed."
+            logger.warning(message)
+            self.gallery_complete.emit(False, message)
 
     def process_images_parallel(self, images: list[object]) -> list[ImageData]:
         """Process multiple images in parallel using ThreadPoolExecutor.
@@ -610,11 +709,11 @@ class GenerateGalleryThread(QtCore.QThread):
                 if not os.path.basename(img_path_val).startswith("._"):
                     # Get cached EXIF if available (from V2 cache format)
                     exif_val = img_dict.get("exif")
-                    cached_exif: Optional[dict[str, object]] = cast(dict[str, object], exif_val) if isinstance(exif_val, dict) else None
-                    if cached_exif is not None:
+                    cached_exif_val: Optional[ExifData] = cast(ExifData, exif_val) if isinstance(exif_val, dict) else None
+                    if cached_exif_val is not None:
                         cache_hits += 1
                     future_to_image[
-                        executor.submit(self.process_image, img_path_val, cached_exif)
+                        executor.submit(self.process_image, img_path_val, cached_exif_val)
                     ] = img_path_val
 
             # Collect results as they complete
@@ -650,7 +749,7 @@ class GenerateGalleryThread(QtCore.QThread):
         return results
 
     def process_image(
-        self, image_path: str, cached_exif: Optional[dict[str, object]] = None
+        self, image_path: str, cached_exif: Optional[ExifData] = None
     ) -> Optional[ImageData]:
         """Process a single image for gallery generation.
 
@@ -676,7 +775,7 @@ class GenerateGalleryThread(QtCore.QThread):
             )
 
             # Use cached EXIF if available, otherwise extract fresh
-            exif: dict[str, object] = cached_exif if cached_exif is not None else get_exif_data(image_path)
+            exif: ExifData = cached_exif if cached_exif is not None else get_exif_data(image_path)
             focal_length: object = exif.get("FocalLength")
             focal_length_value: Optional[float] = None
 

@@ -3,11 +3,12 @@
 from collections.abc import Callable
 from typing import Union
 
+from type_defs import DateData, ExifData, FocalLengthData, ImageData, SlateData
+
 from .cache_manager import ImprovedCacheManager
 from .config_manager import GalleryConfig
 from .config_manager import load_config as _load_config
 from .config_manager import save_config as _save_config
-from .gallery_generator import DateData, FocalLengthData, ImageData, SlateData
 from .gallery_generator import generate_html_gallery as _generate_html_gallery
 from .image_processor import get_exif_data as _get_exif_data
 from .image_processor import get_orientation as _get_orientation
@@ -97,7 +98,7 @@ def generate_html_gallery(
     )
 
 
-def get_exif_data(image_path: str) -> dict[str, object]:
+def get_exif_data(image_path: str) -> ExifData:
     """Extract EXIF data from an image file.
 
     Args:
@@ -109,7 +110,7 @@ def get_exif_data(image_path: str) -> dict[str, object]:
     return _get_exif_data(image_path)
 
 
-def get_orientation(image_path: str, exif_data: dict[str, object]) -> str:
+def get_orientation(image_path: str, exif_data: ExifData) -> str:
     """Determine image orientation from EXIF data or dimensions.
 
     Args:

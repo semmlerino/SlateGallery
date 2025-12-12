@@ -9,7 +9,7 @@ while maintaining identical functionality to the original.
 import os
 import sys
 import webbrowser
-from typing import Optional, cast
+from typing import Optional, Union
 
 from typing_extensions import override
 
@@ -18,7 +18,7 @@ sys.path.insert(0, str(os.path.dirname(os.path.abspath(__file__))))
 
 # Qt imports
 from PySide6 import QtWidgets
-from PySide6.QtCore import QPoint, QRect, QSize, Qt, QTimer
+from PySide6.QtCore import QObject, QPoint, QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QAbstractTextDocumentLayout, QAction, QColor, QTextDocument
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -47,10 +47,11 @@ from PySide6.QtWidgets import (
 
 from core.cache_manager import ImprovedCacheManager
 from core.config_manager import GalleryConfig, load_config, save_config
+from type_defs import ProcessedResults
 
 # Import from our new modular structure
 from utils.logging_config import log_function, logger
-from utils.threading import GenerateGalleryThread, ScanThread
+from utils.threading import CacheManagerProtocol, GenerateGalleryThread, ScanThread
 
 
 class HtmlItemDelegate(QStyledItemDelegate):
@@ -241,6 +242,159 @@ class CardWidget(QWidget):
         self.setGraphicsEffect(shadow)
 
 
+class ThreadCoordinator(QObject):
+    """Manages thread lifecycle for scan and gallery generation.
+
+    This class encapsulates thread management responsibilities that were previously
+    scattered throughout GalleryGeneratorApp. It provides a clean interface for:
+    - Starting and stopping threads
+    - Forwarding signals to UI
+    - Coordinated shutdown during application close
+    """
+
+    # Signals forwarded from threads to UI
+    scan_started: Signal = Signal()  # type: ignore[misc]
+    scan_progress: Signal = Signal(int)  # type: ignore[misc]
+    scan_completed: Signal = Signal(dict, str)  # type: ignore[misc]
+
+    gallery_started: Signal = Signal()  # type: ignore[misc]
+    gallery_progress: Signal = Signal(int)  # type: ignore[misc]
+    gallery_completed: Signal = Signal(bool, str)  # type: ignore[misc]
+
+    def __init__(self, parent: Optional[QObject] = None) -> None:
+        super().__init__(parent)
+        self._scan_thread: Optional[ScanThread] = None
+        self._gallery_thread: Optional[GenerateGalleryThread] = None
+
+    @property
+    def scan_thread(self) -> Optional[ScanThread]:
+        """Access to scan thread (read-only)."""
+        return self._scan_thread
+
+    @property
+    def gallery_thread(self) -> Optional[GenerateGalleryThread]:
+        """Access to gallery thread (read-only)."""
+        return self._gallery_thread
+
+    def start_scan(
+        self,
+        directories: Union[str, list[str]],
+        cache_manager: "CacheManagerProtocol",
+        exclude_patterns: str = "",
+    ) -> bool:
+        """Start a scan operation.
+
+        Args:
+            directories: Single directory or list of directories to scan
+            cache_manager: Cache manager instance
+            exclude_patterns: Comma-separated exclusion patterns
+
+        Returns:
+            True if scan started, False if already running
+        """
+        if self.is_scan_running():
+            logger.warning("Scan already in progress")
+            return False
+
+        self._scan_thread = ScanThread(directories, cache_manager, exclude_patterns)
+        self._scan_thread.progress.connect(self.scan_progress.emit)
+        self._scan_thread.scan_complete.connect(self._on_scan_complete)
+        self.scan_started.emit()
+        self._scan_thread.start()
+        return True
+
+    def _on_scan_complete(self, slates: dict[str, object], message: str) -> None:
+        """Handle scan completion and forward to UI."""
+        self.scan_completed.emit(slates, message)
+
+    def start_gallery_generation(
+        self,
+        selected_slates: list[str],
+        slates_dict: ProcessedResults,
+        cache_manager: "CacheManagerProtocol",
+        output_dir: str,
+        allowed_root_dirs: list[str],
+        template_path: str,
+        generate_thumbnails: bool,
+        thumbnail_size: int,
+        lazy_loading: bool,
+    ) -> bool:
+        """Start gallery generation.
+
+        Returns:
+            True if generation started, False if already running
+        """
+        if self.is_gallery_running():
+            logger.warning("Gallery generation already in progress")
+            return False
+
+        self._gallery_thread = GenerateGalleryThread(
+            selected_slates=selected_slates,
+            slates_dict=slates_dict,
+            cache_manager=cache_manager,
+            output_dir=output_dir,
+            allowed_root_dirs=allowed_root_dirs,
+            template_path=template_path,
+            generate_thumbnails=generate_thumbnails,
+            thumbnail_size=thumbnail_size,
+            lazy_loading=lazy_loading,
+        )
+        self._gallery_thread.progress.connect(self.gallery_progress.emit)
+        self._gallery_thread.gallery_complete.connect(self._on_gallery_complete)
+        self.gallery_started.emit()
+        self._gallery_thread.start()
+        return True
+
+    def _on_gallery_complete(self, success: bool, message: str) -> None:
+        """Handle gallery completion and forward to UI."""
+        self.gallery_completed.emit(success, message)
+
+    def is_scan_running(self) -> bool:
+        """Check if scan thread is currently running."""
+        return self._scan_thread is not None and self._scan_thread.isRunning()
+
+    def is_gallery_running(self) -> bool:
+        """Check if gallery thread is currently running."""
+        return self._gallery_thread is not None and self._gallery_thread.isRunning()
+
+    def shutdown(self, timeout_ms: int = 5000) -> None:
+        """Gracefully shutdown all threads.
+
+        Args:
+            timeout_ms: Maximum time to wait for each thread (milliseconds)
+        """
+        # Disconnect signals first to prevent race conditions
+        if self._scan_thread:
+            try:
+                self._scan_thread.scan_complete.disconnect(self._on_scan_complete)
+                self._scan_thread.progress.disconnect(self.scan_progress.emit)
+            except (TypeError, RuntimeError):
+                pass
+
+        if self._gallery_thread:
+            try:
+                self._gallery_thread.gallery_complete.disconnect(self._on_gallery_complete)
+                self._gallery_thread.progress.disconnect(self.gallery_progress.emit)
+            except (TypeError, RuntimeError):
+                pass
+
+        # Signal both threads to stop (non-blocking for parallel shutdown)
+        if self._scan_thread and self._scan_thread.isRunning():
+            logger.info("Signaling scan thread to stop...")
+            self._scan_thread.signal_stop()
+
+        if self._gallery_thread and self._gallery_thread.isRunning():
+            logger.info("Signaling gallery thread to stop...")
+            self._gallery_thread.signal_stop()
+
+        # Wait for threads to finish
+        if self._scan_thread and not self._scan_thread.wait(timeout_ms):
+            logger.warning("Scan thread did not stop within timeout")
+
+        if self._gallery_thread and not self._gallery_thread.wait(timeout_ms):
+            logger.warning("Gallery thread did not stop within timeout")
+
+
 # ----------------------------- Main Application -----------------------------
 
 
@@ -288,8 +442,8 @@ class GalleryGeneratorApp(QMainWindow):
             self._sync_config_and_save()
             logger.info(f"Default root directory set to home directory: {self.current_root_dir}")
 
-        self.slates_dict: dict[str, object] = {}
-        self.filtered_slates: dict[str, object] = {}
+        self.slates_dict: ProcessedResults = {}
+        self.filtered_slates: ProcessedResults = {}
         self.unique_focal_lengths: set[object] = set()
 
         # Thread attributes - initialized dynamically when needed
@@ -948,10 +1102,10 @@ class GalleryGeneratorApp(QMainWindow):
             self.update_status(f"Error initiating scan: {e}")
             logger.error(f"Error initiating scan: {e}", exc_info=True)
 
-    def on_scan_complete(self, slates_dict: object, message: object) -> None:
-        self.slates_dict = slates_dict  # type: ignore[assignment]
+    def on_scan_complete(self, slates_dict: ProcessedResults, message: str) -> None:
+        self.slates_dict = slates_dict
         self.apply_filters()
-        self.update_status(str(message))
+        self.update_status(message)
         self.progress_bar.setValue(100)
         # Hide progress bar after 2 seconds
         QTimer.singleShot(2000, lambda: self.progress_bar.setVisible(False))
@@ -960,10 +1114,9 @@ class GalleryGeneratorApp(QMainWindow):
         self.btn_refresh.setEnabled(True)
         logger.info(f"Scan complete: {message}")
 
-    def on_scan_progress(self, progress: object) -> None:
-        progress_int = int(progress)  # type: ignore[arg-type]
-        self.progress_bar.setValue(progress_int)
-        logger.debug(f"Scan progress: {progress_int}%")
+    def on_scan_progress(self, progress: int) -> None:
+        self.progress_bar.setValue(progress)
+        logger.debug(f"Scan progress: {progress}%")
 
     def on_filter(self) -> None:
         """Handle filter text changes with debouncing to improve UI responsiveness."""
@@ -988,14 +1141,15 @@ class GalleryGeneratorApp(QMainWindow):
         slate_name = str(item.data(Qt.ItemDataRole.UserRole))
         slate_data = self.slates_dict.get(slate_name)
 
-        if not slate_data or not isinstance(slate_data, dict):
+        if not slate_data:
             return
 
-        images = cast(list[str], slate_data.get("images", []))  # pyright: ignore[reportUnknownMemberType]
+        images = slate_data["images"]
         if not images:
             return
 
-        folder_path = os.path.dirname(images[0])
+        # Images are CachedImageInfo dicts with "path" key
+        folder_path = os.path.dirname(images[0]["path"])
 
         menu = QMenu(self)
         open_action = QAction("Open Folder in Explorer", self)
@@ -1105,12 +1259,7 @@ class GalleryGeneratorApp(QMainWindow):
         for slate in sorted(self.filtered_slates.keys()):
             # Get image count from slate data
             slate_data = self.filtered_slates[slate]
-            image_count = 0
-            if isinstance(slate_data, dict):
-                slate_dict = cast(dict[str, object], slate_data)
-                images = slate_dict.get("images", [])
-                if isinstance(images, list):
-                    image_count = len(cast(list[object], images))
+            image_count = len(slate_data["images"])
 
             # Create item with HTML: bold name, regular count
             item = QListWidgetItem(f"<b>{slate}</b> ({image_count})")
@@ -1356,6 +1505,22 @@ class GalleryGeneratorApp(QMainWindow):
     @override
     def closeEvent(self, event: object) -> None:
         try:
+            # Disconnect signals before stopping threads to prevent race conditions
+            # during shutdown where signals might be emitted to destroyed slots
+            if self.scan_thread:
+                try:
+                    self.scan_thread.scan_complete.disconnect(self.on_scan_complete)
+                    self.scan_thread.progress.disconnect(self.on_scan_progress)
+                except (TypeError, RuntimeError):
+                    pass  # Signal was never connected or already disconnected
+
+            if self.gallery_thread:
+                try:
+                    self.gallery_thread.gallery_complete.disconnect(self.on_gallery_complete)
+                    self.gallery_thread.progress.disconnect(self.on_gallery_progress)
+                except (TypeError, RuntimeError):
+                    pass  # Signal was never connected or already disconnected
+
             # Signal both threads to stop (non-blocking, triggers parallel shutdown)
             if self.scan_thread and self.scan_thread.isRunning():
                 logger.info("Signaling scan thread to stop...")
@@ -1386,7 +1551,7 @@ class GalleryGeneratorApp(QMainWindow):
             logger.info("Application closed.")
         except Exception as e:
             logger.error(f"Error during application shutdown: {e}", exc_info=True)
-            event.accept()  # type: ignore[union-attr]
+            event.accept()  # type: ignore[union-attr]  # type: ignore[union-attr]
 
 
 # ----------------------------- Main Execution -----------------------------

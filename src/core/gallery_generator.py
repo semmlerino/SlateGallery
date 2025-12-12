@@ -2,57 +2,12 @@
 
 import os
 from collections.abc import Callable
-from typing import Optional, TypedDict, Union
+from typing import Union
 
 from jinja2 import Environment, FileSystemLoader
 
+from type_defs import DateData, FocalLengthData, ImageData, SlateData
 from utils.logging_config import log_function, logger
-
-
-# Type definitions for gallery data structures
-class _ImageDataRequired(TypedDict):
-    """Required fields for image data."""
-    original_path: str
-
-
-class _ImageDataOptional(TypedDict, total=False):
-    """Optional fields for image data."""
-    thumbnail: str
-    thumbnail_600: str
-    thumbnail_1200: str
-    thumbnails: dict[str, str]
-    focal_length: Optional[float]
-    orientation: int
-    filename: str
-    date_taken: Optional[str]
-    web_path: str  # Added during gallery generation
-
-
-class ImageData(_ImageDataRequired, _ImageDataOptional):
-    """Type definition for image data dictionary.
-
-    Required fields: original_path
-    Optional fields: thumbnail, thumbnails, focal_length, orientation, filename, date_taken, web_path
-    """
-
-
-class SlateData(TypedDict):
-    """Type definition for slate data dictionary."""
-    slate: str
-    images: list[ImageData]
-
-
-class FocalLengthData(TypedDict):
-    """Type definition for focal length data dictionary."""
-    value: float
-    count: int
-
-
-class DateData(TypedDict):
-    """Type definition for date data dictionary."""
-    value: str  # YYYY-MM-DD format
-    count: int
-    display_date: str  # DD/MM/YY format
 
 # ----------------------------- HTML Gallery Generation -----------------------------
 

@@ -12,6 +12,7 @@ import time
 from collections.abc import Callable, Sequence
 from typing import Optional, cast
 
+from type_defs import CacheMetadata, CachedImageInfo, ExifData, ProcessedResults
 from utils.logging_config import log_function, logger
 
 # Cache format version
@@ -71,7 +72,7 @@ class ImprovedCacheManager:
         return os.path.join(self.cache_dir, f"composite_{composite_hash}.json")
 
     @log_function
-    def load_composite_cache(self, root_dirs: list[str]) -> Optional[dict[str, object]]:
+    def load_composite_cache(self, root_dirs: list[str]) -> Optional[ProcessedResults]:
         """Load cache for multiple directories.
 
         Args:
@@ -84,10 +85,10 @@ class ImprovedCacheManager:
         if os.path.exists(cache_file):
             try:
                 with self._cache_lock, open(cache_file) as f:
-                    cache_data: dict[str, object] = cast(dict[str, object], json.load(f))
+                    cache_data = json.load(f)
 
                 # Strip _metadata from returned slates
-                slates = {k: v for k, v in cache_data.items() if k != "_metadata"}
+                slates: ProcessedResults = {k: v for k, v in cache_data.items() if k != "_metadata"}
                 logger.info(f"Loaded composite cache for {len(root_dirs)} directories")
                 return slates
             except Exception as e:
@@ -98,7 +99,7 @@ class ImprovedCacheManager:
             return None
 
     @log_function
-    def save_composite_cache(self, root_dirs: list[str], slates: dict[str, object]) -> None:
+    def save_composite_cache(self, root_dirs: list[str], slates: ProcessedResults) -> None:
         """Save cache for multiple directories.
 
         Args:
@@ -107,14 +108,13 @@ class ImprovedCacheManager:
         """
         cache_file = self.get_composite_cache_file(root_dirs)
         try:
-            # Count total images across all slates
+            # Count total images across all slates (defensive: handle malformed JSON data)
             file_count = 0
-            for s in slates.values():
-                if not isinstance(s, dict):
-                    continue
-                images_obj = s.get("images")  # type: ignore[assignment]
-                if isinstance(images_obj, list):
-                    file_count += len(images_obj)  # type: ignore[arg-type]
+            for slate_data in slates.values():
+                if isinstance(slate_data, dict) and "images" in slate_data:  # pyright: ignore[reportUnnecessaryIsInstance]
+                    images = slate_data.get("images", [])
+                    if isinstance(images, list):  # pyright: ignore[reportUnnecessaryIsInstance]
+                        file_count += len(images)
 
             # Get max modification time across all directories
             dir_mtimes = [
@@ -162,7 +162,7 @@ class ImprovedCacheManager:
             if not isinstance(metadata_obj, dict):
                 logger.info("Composite cache has no metadata (old format)")
                 return False
-            metadata = cast(dict[str, object], metadata_obj)
+            metadata = cast(CacheMetadata, metadata_obj)
 
             # Check if directories match
             cached_dirs_obj = metadata.get("root_dirs")
@@ -202,7 +202,7 @@ class ImprovedCacheManager:
             return False
 
     @log_function
-    def load_cache(self, root_dir: str) -> Optional[dict[str, object]]:
+    def load_cache(self, root_dir: str) -> Optional[ProcessedResults]:
         """Load cache and strip metadata before returning.
 
         Returns:
@@ -212,10 +212,10 @@ class ImprovedCacheManager:
         if os.path.exists(cache_file):
             try:
                 with self._cache_lock, open(cache_file) as f:
-                    cache_data: dict[str, object] = cast(dict[str, object], json.load(f))
+                    cache_data = json.load(f)
 
                 # Strip _metadata from returned slates
-                slates = {k: v for k, v in cache_data.items() if k != "_metadata"}
+                slates: ProcessedResults = {k: v for k, v in cache_data.items() if k != "_metadata"}
                 logger.info(f"Loaded slates from cache for directory: {root_dir}")
                 return slates
             except Exception as e:
@@ -246,7 +246,7 @@ class ImprovedCacheManager:
             if not isinstance(metadata_obj, dict):
                 logger.info(f"Cache for {root_dir} has no metadata (old format)")
                 return False
-            metadata = cast(dict[str, object], metadata_obj)
+            metadata = cast(CacheMetadata, metadata_obj)
 
             # Check directory modification time
             dir_mtime_obj = metadata.get("dir_mtime")
@@ -277,17 +277,16 @@ class ImprovedCacheManager:
             return False
 
     @log_function
-    def save_cache(self, root_dir: str, slates: dict[str, object]) -> None:
+    def save_cache(self, root_dir: str, slates: ProcessedResults) -> None:
         cache_file = self.get_cache_file(root_dir)
         try:
-            # Count total images across all slates
+            # Count total images across all slates (defensive: handle malformed JSON data)
             file_count = 0
-            for s in slates.values():
-                if not isinstance(s, dict):
-                    continue
-                images_obj = s.get("images")  # type: ignore[assignment]
-                if isinstance(images_obj, list):
-                    file_count += len(images_obj)  # type: ignore[arg-type]
+            for slate_data in slates.values():
+                if isinstance(slate_data, dict) and "images" in slate_data:  # pyright: ignore[reportUnnecessaryIsInstance]
+                    images = slate_data.get("images", [])
+                    if isinstance(images, list):  # pyright: ignore[reportUnnecessaryIsInstance]
+                        file_count += len(images)
 
             # Get directory modification time
             dir_mtime = os.path.getmtime(root_dir) if os.path.exists(root_dir) else 0
@@ -311,8 +310,8 @@ class ImprovedCacheManager:
 
     @log_function
     def process_images_batch(
-        self, image_paths: Sequence[object], _callback: Optional[Callable[[int], None]] = None
-    ) -> list[dict[str, object]]:
+        self, image_paths: Sequence[str], _callback: Optional[Callable[[int], None]] = None
+    ) -> list[CachedImageInfo]:
         """Process a batch of image paths (legacy, no EXIF caching).
 
         Args:
@@ -320,20 +319,20 @@ class ImprovedCacheManager:
             _callback: Optional progress callback (unused in current implementation)
 
         Returns:
-            List of dictionaries containing image path information
+            List of CachedImageInfo dictionaries
         """
         logger.info(f"Processing batch of {len(image_paths)} images for scanning.")
 
-        return [{"path": str(path)} for path in image_paths]
+        return [{"path": str(path), "mtime": 0.0, "exif": {}} for path in image_paths]
 
     @log_function
     def process_images_batch_with_exif(
         self,
         image_paths: Sequence[str],
-        existing_cache: Optional[dict[str, dict[str, object]]] = None,
+        existing_cache: Optional[ProcessedResults] = None,
         _callback: Optional[Callable[[int], None]] = None,
         stop_event: Optional[threading.Event] = None,
-    ) -> list[dict[str, object]]:
+    ) -> list[CachedImageInfo]:
         """Process images with EXIF extraction and caching.
 
         Args:
@@ -343,29 +342,18 @@ class ImprovedCacheManager:
             stop_event: Optional threading.Event to signal cancellation
 
         Returns:
-            List of image dictionaries with path, mtime, and exif data
+            List of CachedImageInfo dictionaries with path, mtime, and exif data
         """
         from core.image_processor import get_exif_data
 
         # Build lookup of existing cached images by path
-        cached_by_path: dict[str, dict[str, object]] = {}
+        cached_by_path: dict[str, CachedImageInfo] = {}
         if existing_cache:
             for slate_data in existing_cache.values():
-                # slate_data is already dict[str, object] from type annotation
-                images = slate_data.get("images")
-                if not isinstance(images, list):
-                    continue
-                for img in images:  # type: ignore[union-attr]
-                    if not isinstance(img, dict):
-                        continue
-                    if "path" not in img:
-                        continue
-                    img_dict = cast(dict[str, object], img)
-                    path_obj = img_dict.get("path")
-                    if path_obj is not None:
-                        cached_by_path[str(path_obj)] = img_dict
+                for img in slate_data["images"]:
+                    cached_by_path[img["path"]] = img
 
-        results: list[dict[str, object]] = []
+        results: list[CachedImageInfo] = []
         to_process: list[tuple[str, float]] = []  # (path, mtime) for images needing EXIF
 
         # Check which images need EXIF extraction
@@ -437,8 +425,8 @@ class ImprovedCacheManager:
         self,
         path: str,
         mtime: float,
-        get_exif_data: Callable[[str], dict[str, object]],
-    ) -> Optional[dict[str, object]]:
+        get_exif_data: Callable[[str], ExifData],
+    ) -> Optional[CachedImageInfo]:
         """Extract EXIF data for a single image.
 
         Args:
@@ -447,7 +435,7 @@ class ImprovedCacheManager:
             get_exif_data: Function to extract EXIF data
 
         Returns:
-            Dictionary with path, mtime, and exif data, or None on error
+            CachedImageInfo with path, mtime, and exif data, or None on error
         """
         try:
             exif = get_exif_data(path)
@@ -462,14 +450,14 @@ class ImprovedCacheManager:
             logger.error(f"Failed to extract EXIF for {path}: {e}")
             return None
 
-    def _make_exif_serializable(self, exif: dict[str, object]) -> dict[str, object]:
+    def _make_exif_serializable(self, exif: ExifData) -> ExifData:
         """Convert EXIF data to JSON-serializable format.
 
         Handles IFDRational, tuples, and other non-serializable types.
         """
-        result: dict[str, object] = {}
+        result: ExifData = {}
         for key, value in exif.items():
-            result[key] = self._convert_value(value)
+            result[key] = self._convert_value(value)  # type: ignore[literal-required]
         return result
 
     def _convert_value(self, value: object) -> object:
@@ -550,7 +538,7 @@ class ImprovedCacheManager:
             metadata_obj = cache_data.get("_metadata")
             if not isinstance(metadata_obj, dict):
                 return 0
-            metadata = cast(dict[str, object], metadata_obj)
+            metadata = cast(CacheMetadata, metadata_obj)
             version_obj = metadata.get("version")
             if isinstance(version_obj, int):
                 return version_obj

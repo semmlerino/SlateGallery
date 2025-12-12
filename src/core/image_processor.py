@@ -4,16 +4,13 @@ import hashlib
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Optional, Union
 
 from PIL import Image
 from PIL.ExifTags import IFD, TAGS
 
+from type_defs import ExifData
 from utils.logging_config import log_function, logger
-
-# Type alias for EXIF data dictionaries from PIL/piexif
-# Note: PIL's EXIF data is untyped; we use Any here as a pragmatic solution
-ExifData = dict[str, Any]  # type: ignore[type-arg]
 
 # ----------------------------- Helper Functions -----------------------------
 
